@@ -18,14 +18,18 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <math.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <curl/curl.h>
 
 using namespace std;
 
+#include "cvedia.hpp"
 #include "curlreader.hpp"
 
 CurlReader::CurlReader() {
+
+	WriteDebugLog("Initializing CurlReader");
 
 	// Initialize the Curl library
 	CURLcode res = curl_global_init(CURL_GLOBAL_NOTHING);
@@ -47,10 +51,48 @@ CurlReader::CurlReader() {
 CurlReader::~CurlReader() {
 }
 
-void CurlReader::RequestUrl(string url) {
+ReadRequest* CurlReader::RequestUrl(string url) {
+
+	ReadRequest* req = new ReadRequest;
+
+	req->url = url;
+
+	// Setup curl object
+	CURL *curl_handle = curl_easy_init();
+	curl_easy_setopt(curl_handle, CURLOPT_URL, req->url.c_str());
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, CurlReader::WriteCallback);
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)req);
+	curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, (void *)req);
+
+	// Execute a single synchronous fetch
+	int err = curl_easy_perform(curl_handle);
+	if (!err) {
+
+		req->status = 0;
+
+		curl_easy_cleanup(curl_handle);
+
+		return req;
+	} else {
+		WriteErrorLog(string("Could not communicate with API: " + url).c_str());
+	}
+
+	// Fail
+	curl_easy_cleanup(curl_handle);
+
+	return NULL;
+}
+
+void CurlReader::QueueUrl(string id, string url) {
 
 	ReadRequest* request = new ReadRequest;
 
+	if (id == "") {
+		WriteErrorLog("Empty id passed to QueueUrl");
+		return;
+	}
+
+	request->id = id;
 	request->url = url;
 
 	mRequestsMutex.lock();
@@ -59,11 +101,25 @@ void CurlReader::RequestUrl(string url) {
 		mRequests.push_back(request);
 	}
 	mRequestsMutex.unlock();
+
+	mRequestsAdded++;
 }
 
 ReaderStats CurlReader::GetStats() {
 
 	return mCurlStats;
+}
+
+void CurlReader::ClearStats() {
+
+	// Clear the stats structure
+	mCurlStats = {};
+}
+
+void CurlReader::SetNumThreads(int num_threads) {
+
+	WriteDebugLog(string("Number of download threads set to " + to_string(num_threads)).c_str());
+	mThreadsMax = num_threads;
 }
 
 size_t CurlReader::WriteCallback(void *data, size_t size, size_t nmemb, void *userp) {
@@ -179,6 +235,8 @@ void CurlReader::WorkerThread() {
 
 					req->status = 0;
 
+					mCurlStats.bytes_read += req->read_data.size();
+
 					mCurlStats.num_reads_success++;
 				} else {
 					req->status = -1;
@@ -194,9 +252,11 @@ void CurlReader::WorkerThread() {
 			
 			mResponsesMutex.lock();
 			{
-				mResponses.push_back(req);
+				mResponses[req->id] = req;
 			}
 			mResponsesMutex.unlock();
+
+			mCurlStats.num_reads_completed++;
 
 			curl_multi_remove_handle(mMultiHandle, p_msg->easy_handle);
 			curl_easy_cleanup(p_msg->easy_handle);

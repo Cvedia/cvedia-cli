@@ -12,15 +12,18 @@ public:
 	~CurlReader();
 
 	ReaderStats GetStats();
-	void RequestUrl(string url);
-
+	void ClearStats();
+	void SetNumThreads(int num_threads);
+	ReadRequest* RequestUrl(string url);
+	void QueueUrl(string id, string url);
+	
 private:
 	void WorkerThread();
 
 	static size_t WriteCallback(void *data, size_t size, size_t nmemb, void *userp);
 
 	deque<ReadRequest* > mRequests;
-	deque<ReadRequest* > mResponses;
+	map<string, ReadRequest* > mResponses;
 
 	mutex mResponsesMutex;
 
@@ -31,6 +34,9 @@ private:
 
 	int mThreadsRunning;
 	int mThreadsMax;
+	
+	int mRequestsAdded;
+	int mRequestsCompleted;
 
 	ReaderStats mCurlStats;
 

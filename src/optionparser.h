@@ -839,25 +839,9 @@ private:
  * @code
  * struct Arg: public option::Arg
  * {
- *   static void printError(const char* msg1, const option::Option& opt, const char* msg2)
- *   {
- *     fprintf(stderr, "ERROR: %s", msg1);
- *     fwrite(opt.name, opt.namelen, 1, stderr);
- *     fprintf(stderr, "%s", msg2);
- *   }
- *
  *   static option::ArgStatus Unknown(const option::Option& option, bool msg)
  *   {
  *     if (msg) printError("Unknown option '", option, "'\n");
- *     return option::ARG_ILLEGAL;
- *   }
- *
- *   static option::ArgStatus Required(const option::Option& option, bool msg)
- *   {
- *     if (option.arg != 0)
- *       return option::ARG_OK;
- *
- *     if (msg) printError("Option '", option, "' requires an argument\n");
  *     return option::ARG_ILLEGAL;
  *   }
  *
@@ -885,10 +869,26 @@ private:
  */
 struct Arg
 {
+  static void printError(const char* msg1, const option::Option& opt, const char* msg2)
+  {
+    fprintf(stderr, "ERROR: %s", msg1);
+    fwrite(opt.name, opt.namelen, 1, stderr);
+    fprintf(stderr, "%s", msg2);
+  }
+
   //! @brief For options that don't take an argument: Returns ARG_NONE.
   static ArgStatus None(const Option&, bool)
   {
     return ARG_NONE;
+  }
+
+  static option::ArgStatus Required(const option::Option& option, bool msg)
+  {
+    if (option.arg != 0)
+      return option::ARG_OK;
+
+    if (msg) printError("Option '", option, "' requires an argument\n");
+      return option::ARG_ILLEGAL;
   }
 
   //! @brief Returns ARG_OK if the argument is attached and ARG_IGNORE otherwise.
