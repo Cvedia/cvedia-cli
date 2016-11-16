@@ -31,13 +31,14 @@ public:
 	virtual int WriteData(Metadata* meta) = 0;
 	virtual string WriteImageData(string filename, vector<uint8_t> image_data) = 0;
 
-	virtual int OpenFile(string file) = 0;
 	virtual int Initialize() = 0;
+	virtual int Finalize() = 0;
 
 	virtual WriterStats GetStats() = 0;
 	virtual void ClearStats() = 0;
 
 private:
+	virtual bool ValidateData(vector<Metadata* > meta) = 0;
 	virtual string PrepareData(Metadata* meta) = 0;
 };
 

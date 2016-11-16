@@ -22,30 +22,8 @@ CsvWriter::CsvWriter(string export_name, map<string, string> options) {
 
 	WriteDebugLog("Initializing CsvWriter");
 
-	// Clear the stats structure
-	mCsvStats = {};
-
-	mCreateTrainFile 	= false;
-	mCreateTestFile 	= false;
-	mCreateValFile 		= false;
-
-	// Read all passed options
-	if (options["create_train_file"] == "1")
-		mCreateTrainFile = true;
-	if (options["create_test_file"] == "1")
-		mCreateTestFile = true;
-	if (options["create_validate_file"] == "1")
-		mCreateValFile = true;
-
-	if (options["base_dir"] != "") {
-		mBaseDir = options["base_dir"];
-	} else {
-		mBaseDir = "";
-	}
-
+	mModuleOptions = options;
 	mExportName = export_name;
-
-	mInitialized = false;
 }
 
 CsvWriter::~CsvWriter() {
@@ -70,6 +48,27 @@ void CsvWriter::ClearStats() {
 }
 
 int CsvWriter::Initialize() {
+
+	// Clear the stats structure
+	mCsvStats = {};
+
+	mCreateTrainFile 	= false;
+	mCreateTestFile 	= false;
+	mCreateValFile 		= false;
+
+	// Read all passed options
+	if (mModuleOptions["create_train_file"] == "1")
+		mCreateTrainFile = true;
+	if (mModuleOptions["create_test_file"] == "1")
+		mCreateTestFile = true;
+	if (mModuleOptions["create_validate_file"] == "1")
+		mCreateValFile = true;
+
+	if (mModuleOptions["base_dir"] != "") {
+		mBaseDir = mModuleOptions["base_dir"];
+	} else {
+		mBaseDir = "";
+	}
 
 	mBasePath = mBaseDir;
 
@@ -113,21 +112,21 @@ int CsvWriter::Initialize() {
 		return -1;
 	}
 
-	mFileFormat = "$FILENAME $CATEGORY\n";
-
 	mInitialized = true;
 
 	return 0;
 }
 
-bool CsvWriter::ValidateData(Metadata* meta) {
+bool CsvWriter::ValidateData(vector<Metadata* > meta) {
 
 	return true;
 }
 
 string CsvWriter::PrepareData(Metadata* meta) {
 
-	string output_line = mFileFormat;
+	string file_format = "$FILENAME $CATEGORY\n";
+
+	string output_line = file_format;
 	output_line = ReplaceString(output_line, "$FILENAME", meta->file_uri);
 
 	if (meta->meta_fields["category"].size() > 0) {
@@ -141,12 +140,15 @@ string CsvWriter::PrepareData(Metadata* meta) {
 		}
 
 		output_line = tmp_line;
+	} else {
+		WriteErrorLog("CsvWriter::PrepareData() Missing 'category' field in input");
+		return "";
 	}
 
 	return output_line;
 }
 
-int CsvWriter::OpenFile(string file) {
+int CsvWriter::Finalize() {
 
 	return 0;
 }
@@ -158,15 +160,13 @@ int CsvWriter::WriteData(Metadata* meta) {
 		return -1;
 	}
 
-	if (!ValidateData(meta)) {
-		return -1;
-	}
-
 	string file_uri = WriteImageData(meta->filename, meta->image_data);
 	meta->file_uri = file_uri;
 
 	string output_line = PrepareData(meta);
-	
+	if (output_line == "")
+		return -1;
+
 	if (meta->type == DATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			

@@ -10,6 +10,7 @@ class CsvWriter: public IDataWriter {
 
 public:
 	CsvWriter(string export_name, map<string, string> options);
+	CsvWriter() {};
 	~CsvWriter();
 
 	int WriteData(Metadata* meta);
@@ -18,27 +19,27 @@ public:
 	WriterStats GetStats();
 	void ClearStats();
 	
-private:
+	virtual int Initialize();
+	virtual int Finalize();
 
-	virtual bool ValidateData(Metadata* meta);
-	virtual string PrepareData(Metadata* meta);
-
-	int OpenFile(string file);
-	int Initialize();
-
-	WriterStats mCsvStats;
-
+	string mBasePath;
 	string mBaseDir;
 	string mExportName;
+
+	map<string, string> mModuleOptions;
+
+private:
+
+	virtual bool ValidateData(vector<Metadata* > meta);
+	virtual string PrepareData(Metadata* meta);
+
+	WriterStats mCsvStats;
 
 	bool mInitialized;
 
 	bool mCreateTrainFile;
 	bool mCreateTestFile;
 	bool mCreateValFile;
-
-	string mFileFormat;
-	string mBasePath;
 
 	ofstream mTrainFile;
 	ofstream mTestFile;

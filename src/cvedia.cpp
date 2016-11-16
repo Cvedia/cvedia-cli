@@ -33,6 +33,7 @@
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
+#include "caffeimagedata.hpp"
 
 using namespace std;
 using namespace rapidjson;
@@ -136,7 +137,7 @@ int StartExport(string export_code) {
 	if (gOutputFormat == "csv") {
 		p_writer = new CsvWriter(gExportName, options);
 	} else if (gOutputFormat == "caffeimagedata") {
-	//	p_writer = new CsvWriter(gExportName, options);
+		p_writer = new CaffeImageDataWriter(gExportName, options);
 	} else {
 		WriteErrorLog(string("Unsupported output module specified: " + gOutputFormat).c_str());
 	}
@@ -222,6 +223,9 @@ int StartExport(string export_code) {
 		for (auto& kv : responses) {
 			delete kv.second;
 		}
+
+		// Flush any other data from memory to disk
+		p_writer->Finalize();
 
 		responses.clear();
 	}
