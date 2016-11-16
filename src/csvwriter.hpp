@@ -13,7 +13,7 @@ public:
 	~CsvWriter();
 
 	int WriteData(Metadata* meta);
-	int WriteImageData(string filename, vector<uint8_t> image_data);
+	string WriteImageData(string filename, vector<uint8_t> image_data);
 
 	WriterStats GetStats();
 	void ClearStats();
@@ -21,6 +21,7 @@ public:
 private:
 
 	virtual bool ValidateData(Metadata* meta);
+	virtual string PrepareData(Metadata* meta);
 
 	int OpenFile(string file);
 	int Initialize();

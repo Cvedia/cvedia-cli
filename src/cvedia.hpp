@@ -7,7 +7,7 @@ extern int gDebug;
 
 int StartExport(string export_code);
 string ReplaceString(string subject, const string& search, const string& replace);
-void DisplayProgressBar(int bar_width, float progress);
+void DisplayProgressBar(int bar_width, float progress, int cur_value, int max_value);
 
 void split(const std::string &s, char delim, std::vector<std::string> &elems);
 std::vector<std::string> split(const std::string &s, char delim);

@@ -3,6 +3,7 @@
 #include <deque>
 #include <map>
 #include <vector>
+#include <algorithm>
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -45,19 +46,21 @@ int gDownloadThreads = 100;
 string gBaseDir = "";
 string gExportName = "";
 string gApiUrl = "";
+string gOutputFormat = "csv";
 
-enum  optionIndex { UNKNOWN, HELP, DIR, NAME, API, BATCHSIZE, THREADS };
+enum  optionIndex { UNKNOWN, HELP, DIR, NAME, API, FORMAT, BATCHSIZE, THREADS };
 const option::Descriptor usage[] =
 {
-	{UNKNOWN, 0,"" , ""    ,option::Arg::None, "USAGE: cvedia [options]\n\n"
+	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "USAGE: cvedia [options]\n\n"
 	                                         "Options:" },
-	{HELP,    0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
-	{DIR,    0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data" },
-	{NAME,    0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk" },
-	{API,    0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point" },
-	{BATCHSIZE,    0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
-	{THREADS,    0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
-	{UNKNOWN, 0,"" ,  ""   ,option::Arg::None, "\nExamples:\n"
+	{HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
+	{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data" },
+	{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk" },
+	{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point" },
+	{FORMAT,   	0,"f", "format",option::Arg::Required, "  --format=<module>, -f <module>  \tSupported modules are CSV, CaffeImageData." },
+	{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
+	{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
+	{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n"
 	                                         "  cvedia -n test_export --api=http://... \n" },
 	{0,0,0,0,0,0}
 };
@@ -97,6 +100,13 @@ int main(int argc, char* argv[]) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 
+	if (options[FORMAT].count() == 1) {
+		gOutputFormat = options[FORMAT].arg;
+
+		// Convert to lowercase
+		std::transform(gOutputFormat.begin(), gOutputFormat.end(), gOutputFormat.begin(), ::tolower);
+	}
+
 	// Initialize the Curl library
 	// We could've done this inside the curlreader but with those being created
 	// and destroyed continually this is a better approach
@@ -120,8 +130,17 @@ int StartExport(string export_code) {
 	options["create_train_file"] = "1";
 
 	CurlReader *p_reader = new CurlReader();
-	IDataWriter *p_writer = new CsvWriter(gExportName, options);
-	
+
+	IDataWriter *p_writer = NULL;
+
+	if (gOutputFormat == "csv") {
+		p_writer = new CsvWriter(gExportName, options);
+	} else if (gOutputFormat == "caffeimagedata") {
+	//	p_writer = new CsvWriter(gExportName, options);
+	} else {
+		WriteErrorLog(string("Unsupported output module specified: " + gOutputFormat).c_str());
+	}
+
 	if (p_writer->Initialize() != 0) {
 		WriteErrorLog("Failed to initialize CsvWriter");
 		return -1;
@@ -161,7 +180,7 @@ int StartExport(string export_code) {
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				DisplayProgressBar(70, stats.num_reads_completed / (float)gBatchSize);
+				DisplayProgressBar(70, stats.num_reads_completed / (float)gBatchSize, stats.num_reads_completed, gBatchSize);
 
 //				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
 
@@ -172,7 +191,7 @@ int StartExport(string export_code) {
 		}
 
 		// Display the 100% complete
-		DisplayProgressBar(70, 1);
+		DisplayProgressBar(70, 1, stats.num_reads_completed, gBatchSize);
 		cout << endl;
 
 		// Update stats for last time
@@ -210,7 +229,7 @@ int StartExport(string export_code) {
 	return 0;
 }
 
-void DisplayProgressBar(int bar_width, float progress) {
+void DisplayProgressBar(int bar_width, float progress, int cur_value, int max_value) {
 
     cout << "[";
     int pos = bar_width * progress;
@@ -219,6 +238,6 @@ void DisplayProgressBar(int bar_width, float progress) {
         else if (i == pos) cout << ">";
         else cout << " ";
     }
-    cout << "] " << int(progress * 100.0) << " %\r";
+    cout << "] [" << to_string(cur_value) << "/" << to_string(max_value) << "]\r";
     cout.flush();
 }

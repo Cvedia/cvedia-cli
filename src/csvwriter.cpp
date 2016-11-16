@@ -125,6 +125,27 @@ bool CsvWriter::ValidateData(Metadata* meta) {
 	return true;
 }
 
+string CsvWriter::PrepareData(Metadata* meta) {
+
+	string output_line = mFileFormat;
+	output_line = ReplaceString(output_line, "$FILENAME", meta->file_uri);
+
+	if (meta->meta_fields["category"].size() > 0) {
+
+		// Save a current copy of the line
+		string tmp_line = "";
+
+		for (string cat: meta->meta_fields["category"]) {
+
+			tmp_line += ReplaceString(output_line, "$CATEGORY", cat);
+		}
+
+		output_line = tmp_line;
+	}
+
+	return output_line;
+}
+
 int CsvWriter::OpenFile(string file) {
 
 	return 0;
@@ -141,12 +162,11 @@ int CsvWriter::WriteData(Metadata* meta) {
 		return -1;
 	}
 
-	WriteImageData(meta->filename, meta->image_data);
+	string file_uri = WriteImageData(meta->filename, meta->image_data);
+	meta->file_uri = file_uri;
 
-	string output_line = mFileFormat;
-	output_line = ReplaceString(output_line, "$FILENAME", meta->filename);
-//	output_line = ReplaceString(output_line, "$CATEGORY", meta->category);
-
+	string output_line = PrepareData(meta);
+	
 	if (meta->type == DATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			
@@ -176,9 +196,15 @@ int CsvWriter::WriteData(Metadata* meta) {
 	return 0;
 }
 
-int CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
+string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 
-	string path = mBasePath;
+	string path = mBasePath + "data/";
+
+	int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	if (dir_err == -1 && errno != EEXIST) {
+		WriteErrorLog(string("Could not create directory: " + path).c_str());
+		return "";
+	}
 
 	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
 	if (filename.size() > 7) {
@@ -189,29 +215,15 @@ int CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 			int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 			if (dir_err == -1 && errno != EEXIST) {
 				WriteErrorLog(string("Could not create directory: " + path).c_str());
-				return -1;
+				return "";
 			}
 		}
-
-		ofstream image_file;
-		image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
-		image_file.write((char *)&image_data[0], image_data.size());
-		image_file.close();
-	} else {
-		path += "data/";
-
-		int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-		if (dir_err == -1 && errno != EEXIST) {
-			WriteErrorLog(string("Could not create directory: " + path).c_str());
-			return -1;
-		}
-
-		// Store directly inside a data folder
-		ofstream image_file;
-		image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
-		image_file.write((char *)&image_data[0], image_data.size());
-		image_file.close();		
 	}
 
-	return 0;
+	ofstream image_file;
+	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
+	image_file.write((char *)&image_data[0], image_data.size());
+	image_file.close();		
+
+	return path + filename;
 }
