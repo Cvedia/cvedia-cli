@@ -31,12 +31,6 @@ CurlReader::CurlReader() {
 
 	WriteDebugLog("Initializing CurlReader");
 
-	// Initialize the Curl library
-	CURLcode res = curl_global_init(CURL_GLOBAL_NOTHING);
-	if (res != 0) {
-		cout << "curl_global_init(): " << curl_easy_strerror(res) << endl;
-	}
-
 	mThreadsMax = 100;
 
 	// Initialize a multi stack
@@ -108,6 +102,17 @@ void CurlReader::QueueUrl(string id, string url) {
 ReaderStats CurlReader::GetStats() {
 
 	return mCurlStats;
+}
+
+void CurlReader::ClearData() {
+
+	mRequests.clear();
+	mResponses.clear();
+}
+
+map<string, ReadRequest* > CurlReader::GetAllData() {
+
+	return mResponses;
 }
 
 void CurlReader::ClearStats() {

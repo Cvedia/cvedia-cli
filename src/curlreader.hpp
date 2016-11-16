@@ -13,8 +13,10 @@ public:
 
 	ReaderStats GetStats();
 	void ClearStats();
+	void ClearData();
+	map<string, ReadRequest* > GetAllData();
 	void SetNumThreads(int num_threads);
-	ReadRequest* RequestUrl(string url);
+	static ReadRequest* RequestUrl(string url);
 	void QueueUrl(string id, string url);
 	
 private:

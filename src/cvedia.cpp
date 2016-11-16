@@ -26,6 +26,8 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+#include "api.hpp"
+#include "functions.hpp"
 #include "optionparser.h"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
@@ -34,6 +36,7 @@
 using namespace std;
 using namespace rapidjson;
 
+// Initialize global variables
 int gDebug 		= 1;
 
 int gBatchSize 	= 256;
@@ -41,8 +44,9 @@ int gDownloadThreads = 100;
 
 string gBaseDir = "";
 string gExportName = "";
+string gApiUrl = "";
 
-enum  optionIndex { UNKNOWN, HELP, DIR, NAME, BATCHSIZE, THREADS };
+enum  optionIndex { UNKNOWN, HELP, DIR, NAME, API, BATCHSIZE, THREADS };
 const option::Descriptor usage[] =
 {
 	{UNKNOWN, 0,"" , ""    ,option::Arg::None, "USAGE: cvedia [options]\n\n"
@@ -50,10 +54,11 @@ const option::Descriptor usage[] =
 	{HELP,    0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
 	{DIR,    0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data" },
 	{NAME,    0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk" },
+	{API,    0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point" },
 	{BATCHSIZE,    0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
 	{THREADS,    0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
 	{UNKNOWN, 0,"" ,  ""   ,option::Arg::None, "\nExamples:\n"
-	                                         "  cvedia -n test_export\n" },
+	                                         "  cvedia -n test_export --api=http://... \n" },
 	{0,0,0,0,0,0}
 };
 
@@ -67,7 +72,7 @@ int main(int argc, char* argv[]) {
 	if (parse.error())
 		return 1;
 
-	if (options[HELP] || argc == 0 || !options[NAME]) {
+	if (options[HELP] || argc == 0 || !options[NAME] || !options[API]) {
 		option::printUsage(std::cout, usage);
 		return 0;
 	}
@@ -84,11 +89,25 @@ int main(int argc, char* argv[]) {
 		gExportName = options[NAME].arg;
 	}
 
+	if (options[API].count() == 1) {
+		gApiUrl = options[API].arg;
+	}
+
 	if (options[THREADS].count() == 1) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 
-	StartExport("");
+	// Initialize the Curl library
+	// We could've done this inside the curlreader but with those being created
+	// and destroyed continually this is a better approach
+	CURLcode res = curl_global_init(CURL_GLOBAL_NOTHING);
+	if (res != 0) {
+		cout << "curl_global_init(): " << curl_easy_strerror(res) << endl;
+	}
+
+	if (InitializeApi() == 0) {
+		StartExport("");
+	}
 }
 
 int StartExport(string export_code) {
@@ -100,7 +119,7 @@ int StartExport(string export_code) {
 	options["create_test_file"] = "1";
 	options["create_train_file"] = "1";
 
-	IDataReader *p_reader = new CurlReader();
+	CurlReader *p_reader = new CurlReader();
 	IDataWriter *p_writer = new CsvWriter(gExportName, options);
 	
 	if (p_writer->Initialize() != 0) {
@@ -110,35 +129,28 @@ int StartExport(string export_code) {
 
 	p_reader->SetNumThreads(gDownloadThreads);
 
-	ReadRequest *req = p_reader->RequestUrl("https://jsonplaceholder.typicode.com/photos");
-
-	// TODO: Temporary code instead of API
-	ifstream api_results("../tmp/api.txt");
-	if (api_results == NULL) {
-		WriteErrorLog("Failed to read from API");
-		return -1;
-	}
-
-	string api_data((istreambuf_iterator<char>(api_results)),
-				istreambuf_iterator<char>());
-
-	vector<string> api_lines = split(api_data, '\n');
-	// END
+	int batch_size = GetTotalDatasetSize(export_code);
+	WriteDebugLog(string("Total expected dataset size is " + to_string(batch_size)).c_str());
 
 	// Fetch basic stats on export
-	int num_batches = ceil(api_lines.size() / gBatchSize);
+	int num_batches = ceil(batch_size / gBatchSize);
 
 	for (int batch_idx = 0; batch_idx < num_batches; batch_idx++) {
+
+		vector<Metadata* > meta_data = FetchBatch(export_code, batch_idx);
+
+		if (meta_data.size() == 0) {
+			WriteDebugLog(string("No metadata return by API, end of dataset?").c_str());
+			return -1;
+		}
 
 		WriteDebugLog(string("Starting download for batch #" + to_string(batch_idx)).c_str());
 
 		seconds = time(NULL);
 
 		// Queue up all requests in this batch
-		for (int i = 0; i < gBatchSize; i++) {
-			int line_number = batch_idx * gBatchSize + i;
-
-			p_reader->QueueUrl(to_string(i), api_lines[line_number]);
+		for (Metadata* m : meta_data) {
+			p_reader->QueueUrl(m->filename, m->url);
 		}
 
 		ReaderStats stats = p_reader->GetStats();
@@ -149,13 +161,19 @@ int StartExport(string export_code) {
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
+				DisplayProgressBar(70, stats.num_reads_completed / (float)gBatchSize);
+
+//				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
 
 				seconds = time(NULL);
 			}
 
 			usleep(100);
 		}
+
+		// Display the 100% complete
+		DisplayProgressBar(70, 1);
+		cout << endl;
 
 		// Update stats for last time
 		stats = p_reader->GetStats();
@@ -164,22 +182,43 @@ int StartExport(string export_code) {
 		WriteDebugLog("Syncing batch to disk...");
 
 		p_reader->ClearStats();
+
+		map<string, ReadRequest* > responses = p_reader->GetAllData();
+
+		for (Metadata* m : meta_data) {
+			// Find the request for a specific filename
+			ReadRequest* req = responses[m->filename];
+
+			if (req != NULL && req->read_data.size() > 0) {
+				// We found the download for a piece of metadata
+				m->image_data = req->read_data;
+
+				p_writer->WriteData(m);
+			}
+		}
+
+		p_reader->ClearData();
+
+		// We are completely done with the response data
+		for (auto& kv : responses) {
+			delete kv.second;
+		}
+
+		responses.clear();
 	}
 
 	return 0;
 }
 
-void split(const string &s, char delim, vector<string> &elems) {
-    stringstream ss;
-    ss.str(s);
-    string item;
-    while (getline(ss, item, delim)) {
-        elems.push_back(item);
-    }
-}
+void DisplayProgressBar(int bar_width, float progress) {
 
-vector<string> split(const string &s, char delim) {
-    vector<string> elems;
-    split(s, delim, elems);
-    return elems;
+    cout << "[";
+    int pos = bar_width * progress;
+    for (int i = 0; i < bar_width; ++i) {
+        if (i < pos) cout << "=";
+        else if (i == pos) cout << ">";
+        else cout << " ";
+    }
+    cout << "] " << int(progress * 100.0) << " %\r";
+    cout.flush();
 }

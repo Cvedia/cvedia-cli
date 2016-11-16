@@ -28,8 +28,9 @@ class IDataWriter {
 public:
 	virtual ~IDataWriter() {};
 
-	virtual int WriteData(WriteRequest* req) = 0;
-
+	virtual int WriteData(Metadata* meta) = 0;
+	virtual int WriteImageData(string filename, vector<uint8_t> image_data) = 0;
+	
 	virtual int OpenFile(string file) = 0;
 	virtual int Initialize() = 0;
 
@@ -37,7 +38,7 @@ public:
 	virtual void ClearStats() = 0;
 
 private:
-	virtual bool ValidateRequest(WriteRequest* req) = 0;
+	virtual bool ValidateData(Metadata* meta) = 0;
 };
 
 #endif

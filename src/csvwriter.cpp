@@ -3,6 +3,8 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <iostream>
+#include <sstream>
 #include <stdio.h>
 #include <errno.h>
 #include <sys/time.h>
@@ -13,6 +15,7 @@
 using namespace std;
 
 #include "cvedia.hpp"
+#include "api.hpp"
 #include "csvwriter.hpp"
 
 CsvWriter::CsvWriter(string export_name, map<string, string> options) {
@@ -46,6 +49,13 @@ CsvWriter::CsvWriter(string export_name, map<string, string> options) {
 }
 
 CsvWriter::~CsvWriter() {
+
+	if (mTrainFile.is_open())
+		mTrainFile.close();
+	if (mTestFile.is_open())
+		mTestFile.close();
+	if (mValidateFile.is_open())
+		mValidateFile.close();
 }
 
 WriterStats CsvWriter::GetStats() {
@@ -61,39 +71,39 @@ void CsvWriter::ClearStats() {
 
 int CsvWriter::Initialize() {
 
-	string base_path = mBaseDir;
+	mBasePath = mBaseDir;
 
-	if (base_path == "")
-		base_path = "./";
+	if (mBasePath == "")
+		mBasePath = "./";
 	else
-		base_path += "/";
+		mBasePath += "/";
 
-	base_path += mExportName + "/";
+	mBasePath += mExportName + "/";
 
-	int dir_err = mkdir(base_path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	int dir_err = mkdir(mBasePath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
-		WriteErrorLog(string("Could not create directory: " + base_path).c_str());
+		WriteErrorLog(string("Could not create directory: " + mBasePath).c_str());
 		return -1;
 	}
 
 	if (mCreateTrainFile) {
-		mTrainFile.open(base_path + "train.txt", ios::out | ios::trunc);
+		mTrainFile.open(mBasePath + "train.txt", ios::out | ios::trunc);
 		if (!mTrainFile.is_open()) {
-			WriteErrorLog(string("Failed to open: " + base_path + "train.txt").c_str());
+			WriteErrorLog(string("Failed to open: " + mBasePath + "train.txt").c_str());
 			return -1;			
 		}
 	}
 	if (mCreateTestFile) {
-		mTestFile.open(base_path + "test.txt", ios::out | ios::trunc);
+		mTestFile.open(mBasePath + "test.txt", ios::out | ios::trunc);
 		if (!mTestFile.is_open()) {
-			WriteErrorLog(string("Failed to open: " + base_path + "test.txt").c_str());
+			WriteErrorLog(string("Failed to open: " + mBasePath + "test.txt").c_str());
 			return -1;			
 		}
 	}
 	if (mCreateValFile) {
-		mValidateFile.open(base_path + "validate.txt", ios::out | ios::trunc);
+		mValidateFile.open(mBasePath + "validate.txt", ios::out | ios::trunc);
 		if (!mValidateFile.is_open()) {
-			WriteErrorLog(string("Failed to open: " + base_path + "validate.txt").c_str());
+			WriteErrorLog(string("Failed to open: " + mBasePath + "validate.txt").c_str());
 			return -1;			
 		}
 	}
@@ -110,7 +120,7 @@ int CsvWriter::Initialize() {
 	return 0;
 }
 
-bool CsvWriter::ValidateRequest(WriteRequest* req) {
+bool CsvWriter::ValidateData(Metadata* meta) {
 
 	return true;
 }
@@ -120,36 +130,38 @@ int CsvWriter::OpenFile(string file) {
 	return 0;
 }
 
-int CsvWriter::WriteData(WriteRequest* req) {
+int CsvWriter::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
 		WriteErrorLog("Must call Initialize() first");
 		return -1;
 	}
 
-	if (!ValidateRequest(req)) {
+	if (!ValidateData(meta)) {
 		return -1;
 	}
 
-	string output_line = mFileFormat;
-	output_line = ReplaceString(output_line, "$FILENAME", req->filename);
-	output_line = ReplaceString(output_line, "$CATEGORY", req->category);
+	WriteImageData(meta->filename, meta->image_data);
 
-	if (req->type == DATA_TRAIN) {
+	string output_line = mFileFormat;
+	output_line = ReplaceString(output_line, "$FILENAME", meta->filename);
+//	output_line = ReplaceString(output_line, "$CATEGORY", meta->category);
+
+	if (meta->type == DATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			
 			return -1;
 		}
 
 		mTrainFile << output_line;
-	} else if (req->type == DATA_TEST) {
+	} else if (meta->type == DATA_TEST) {
 		if (!mCreateTestFile) {
 			WriteErrorLog("Test file not specified but data contains DATA_TEST");			
 			return -1;
 		}
 
 		mTestFile << output_line;
-	} else if (req->type == DATA_VALIDATE) {
+	} else if (meta->type == DATA_VALIDATE) {
 		if (!mCreateValFile) {
 			WriteErrorLog("Validate file not specified but data contains DATA_VALIDATE");			
 			return -1;
@@ -157,21 +169,49 @@ int CsvWriter::WriteData(WriteRequest* req) {
 
 		mValidateFile << output_line;
 	} else {
-		WriteErrorLog(string("API returned unsupported file type: " + to_string(req->type)).c_str());			
+		WriteErrorLog(string("API returned unsupported file type: " + to_string(meta->type)).c_str());			
 		return -1;
 	}
 
 	return 0;
 }
 
-string CsvWriter::ReplaceString(string subject, const string& search, const string& replace) {
-	
-	size_t pos = 0;
+int CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 
-	while ((pos = subject.find(search, pos)) != string::npos) {
-	     subject.replace(pos, search.length(), replace);
-	     pos += replace.length();
+	string path = mBasePath;
+
+	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
+	if (filename.size() > 7) {
+
+		for (int i = 0; i < 3; ++i) {
+			path += filename.substr(i,1) + "/";
+
+			int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+			if (dir_err == -1 && errno != EEXIST) {
+				WriteErrorLog(string("Could not create directory: " + path).c_str());
+				return -1;
+			}
+		}
+
+		ofstream image_file;
+		image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
+		image_file.write((char *)&image_data[0], image_data.size());
+		image_file.close();
+	} else {
+		path += "data/";
+
+		int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+		if (dir_err == -1 && errno != EEXIST) {
+			WriteErrorLog(string("Could not create directory: " + path).c_str());
+			return -1;
+		}
+
+		// Store directly inside a data folder
+		ofstream image_file;
+		image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
+		image_file.write((char *)&image_data[0], image_data.size());
+		image_file.close();		
 	}
 
-	return subject;
+	return 0;
 }

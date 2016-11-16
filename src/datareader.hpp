@@ -28,7 +28,6 @@ public:
 	virtual ReaderStats GetStats() = 0;
 	virtual void ClearStats() = 0;
 	virtual void SetNumThreads(int num_threads) = 0;
-	virtual ReadRequest* RequestUrl(string url) = 0;
 	virtual void QueueUrl(string id, string url) = 0;
 };
 

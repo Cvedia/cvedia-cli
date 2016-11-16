@@ -4,6 +4,7 @@
 using namespace std;
 
 #include "datawriter.hpp"
+#include "api.hpp"
 
 class CsvWriter: public IDataWriter {
 
@@ -11,21 +12,18 @@ public:
 	CsvWriter(string export_name, map<string, string> options);
 	~CsvWriter();
 
-	int WriteData(WriteRequest* req);
+	int WriteData(Metadata* meta);
+	int WriteImageData(string filename, vector<uint8_t> image_data);
 
 	WriterStats GetStats();
 	void ClearStats();
 	
 private:
 
-	virtual bool ValidateRequest(WriteRequest* req);
-	string ReplaceString(string subject, const string& search, const string& replace);
-
+	virtual bool ValidateData(Metadata* meta);
 
 	int OpenFile(string file);
 	int Initialize();
-
-	deque<WriteRequest* > mRequests;
 
 	WriterStats mCsvStats;
 
@@ -39,6 +37,7 @@ private:
 	bool mCreateValFile;
 
 	string mFileFormat;
+	string mBasePath;
 
 	ofstream mTrainFile;
 	ofstream mTestFile;
