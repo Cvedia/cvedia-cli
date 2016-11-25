@@ -26,8 +26,8 @@ struct Metadata{
 #include "datawriter.hpp"
 
 int InitializeApi();
-int GetTotalDatasetSize(string export_code);
-vector<Metadata* > FetchBatch(string export_code, int batch_idx);
+int GetTotalDatasetSize(map<string,string> options);
+vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
 vector<Metadata* > ParseFeed(const char * feed);
 
 #endif

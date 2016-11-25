@@ -5,7 +5,7 @@ using namespace std;
 
 extern int gDebug;
 
-int StartExport(string export_code);
+int StartExport(map<string,string> options);
 string ReplaceString(string subject, const string& search, const string& replace);
 void DisplayProgressBar(int bar_width, float progress, int cur_value, int max_value);
 

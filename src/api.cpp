@@ -69,7 +69,7 @@ int InitializeApi() {
 	return -1;
 }
 
-int GetTotalDatasetSize(string export_code) {
+int GetTotalDatasetSize(map<string,string> options) {
 
 	int count = 0;
 
@@ -95,7 +95,7 @@ int GetTotalDatasetSize(string export_code) {
 	return count;
 }
 
-vector<Metadata* > FetchBatch(string export_code, int batch_idx) {
+vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 
 	vector<Metadata* > meta_vector;
 

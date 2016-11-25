@@ -49,7 +49,7 @@ string gExportName = "";
 string gApiUrl = "";
 string gOutputFormat = "csv";
 
-enum  optionIndex { UNKNOWN, HELP, DIR, NAME, API, FORMAT, BATCHSIZE, THREADS };
+enum  optionIndex { UNKNOWN, HELP, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, MOD_CSV_SAME_DIR};
 const option::Descriptor usage[] =
 {
 	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "USAGE: cvedia [options]\n\n"
@@ -58,9 +58,11 @@ const option::Descriptor usage[] =
 	{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data" },
 	{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk" },
 	{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point" },
-	{FORMAT,   	0,"f", "format",option::Arg::Required, "  --format=<module>, -f <module>  \tSupported modules are CSV, CaffeImageData." },
+	{OUTPUT,   	0,"o", "output",option::Arg::Required, "  --output=<module>, -o <module>  \tSupported modules are CSV, CaffeImageData." },
 	{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
 	{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
+	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "\n             ##### CSV Module Options #####"},
+	{MOD_CSV_SAME_DIR,   0,"", "csv-same-dir",option::Arg::None, "  --csv-same-dir  \tDisable nested image storage on disk." },
 	{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n"
 	                                         "  cvedia -n test_export --api=http://... \n" },
 	{0,0,0,0,0,0}
@@ -68,6 +70,8 @@ const option::Descriptor usage[] =
 
 int main(int argc, char* argv[]) {
 	
+	map<string,string> mod_options;
+
 	argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
 	option::Stats  stats(usage, argc, argv);
 	option::Option options[stats.options_max], buffer[stats.buffer_max];
@@ -101,8 +105,12 @@ int main(int argc, char* argv[]) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 
-	if (options[FORMAT].count() == 1) {
-		gOutputFormat = options[FORMAT].arg;
+	if (options[MOD_CSV_SAME_DIR].count() == 1) {
+		mod_options["csv-same-dir"] = "1";
+	}
+
+	if (options[OUTPUT].count() == 1) {
+		gOutputFormat = options[OUTPUT].arg;
 
 		// Convert to lowercase
 		std::transform(gOutputFormat.begin(), gOutputFormat.end(), gOutputFormat.begin(), ::tolower);
@@ -116,17 +124,17 @@ int main(int argc, char* argv[]) {
 		cout << "curl_global_init(): " << curl_easy_strerror(res) << endl;
 	}
 
+	mod_options["base_dir"] = gBaseDir;
+
 	if (InitializeApi() == 0) {
-		StartExport("");
+		StartExport(mod_options);
 	}
 }
 
-int StartExport(string export_code) {
+int StartExport(map<string,string> options) {
 
 	time_t seconds;
 
-	map<string,string> options;
-	options["base_dir"] = gBaseDir;
 	options["create_test_file"] = "1";
 	options["create_train_file"] = "1";
 
@@ -149,15 +157,15 @@ int StartExport(string export_code) {
 
 	p_reader->SetNumThreads(gDownloadThreads);
 
-	int batch_size = GetTotalDatasetSize(export_code);
+	int batch_size = GetTotalDatasetSize(options);
 	WriteDebugLog(string("Total expected dataset size is " + to_string(batch_size)).c_str());
 
 	// Fetch basic stats on export
-	int num_batches = ceil(batch_size / gBatchSize);
+	int num_batches = ceil(batch_size / (float)gBatchSize);
 
 	for (int batch_idx = 0; batch_idx < num_batches; batch_idx++) {
 
-		vector<Metadata* > meta_data = FetchBatch(export_code, batch_idx);
+		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 		if (meta_data.size() == 0) {
 			WriteDebugLog(string("No metadata return by API, end of dataset?").c_str());
@@ -176,12 +184,12 @@ int StartExport(string export_code) {
 		ReaderStats stats = p_reader->GetStats();
 
 		// Loop until all downloads are finished
-		while (stats.num_reads_completed < gBatchSize) {
+		while (stats.num_reads_completed < meta_data.size()) {
 
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				DisplayProgressBar(70, stats.num_reads_completed / (float)gBatchSize, stats.num_reads_completed, gBatchSize);
+				DisplayProgressBar(70, stats.num_reads_completed / (float)meta_data.size(), stats.num_reads_completed, meta_data.size());
 
 //				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
 
@@ -192,7 +200,7 @@ int StartExport(string export_code) {
 		}
 
 		// Display the 100% complete
-		DisplayProgressBar(70, 1, stats.num_reads_completed, gBatchSize);
+		DisplayProgressBar(70, 1, stats.num_reads_completed, meta_data.size());
 		cout << endl;
 
 		// Update stats for last time
@@ -228,7 +236,8 @@ int StartExport(string export_code) {
 		p_writer->Finalize();
 
 		responses.clear();
-	}
+
+	}	// End of Batch iteration loop
 
 	return 0;
 }
