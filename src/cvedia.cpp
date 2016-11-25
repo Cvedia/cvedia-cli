@@ -147,6 +147,7 @@ int StartExport(string export_code) {
 	options["base_dir"] = gBaseDir;
 	options["create_test_file"] = "1";
 	options["create_train_file"] = "1";
+	options["create_validate_file"] = "1";
 
 	CurlReader *p_reader = new CurlReader();
 
