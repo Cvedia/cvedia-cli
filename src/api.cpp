@@ -39,7 +39,7 @@ using namespace rapidjson;
 int InitializeApi() {
 
 	// Execute welcome call to make sure API is valid
-	string api_url = gApiUrl + string(API_FUNCTION_HELLO);
+	string api_url = gApiUrl + gAPIVersion + "/" + string(API_FUNCTION_HELLO);
 
 	ReadRequest *req = CurlReader::RequestUrl(api_url);
 
@@ -73,7 +73,7 @@ int GetTotalDatasetSize(map<string,string> options) {
 
 	int count = 0;
 
-	string api_url = gApiUrl + string(API_FUNCTION_COUNT);
+	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_COUNT);
 
 	WriteDebugLog(string("Fetching dataset size at " + api_url).c_str());
 
@@ -99,7 +99,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 
 	vector<Metadata* > meta_vector;
 
-	string api_url = gApiUrl + string(API_FUNCTION_FETCH_BATCH);
+	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
 	api_url = ReplaceString(api_url, "$BATCHID", to_string(batch_idx));
 
@@ -148,7 +148,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 					if (key == "filename") {
 						meta_entry->filename = itr->value.GetString();
 					} else if (key == "url") {
-						meta_entry->url = itr->value.GetString();							
+						meta_entry->url = itr->value.GetString();
 					} else if (key == "type") {
 						meta_entry->type = itr->value.GetInt();
 					} else {

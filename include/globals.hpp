@@ -12,4 +12,8 @@ extern string gBaseDir;
 extern string gExportName;
 extern string gApiUrl;
 
+extern string gVersion;
+extern string gAPIVersion;
+extern string gJobID;
+
 #endif

@@ -3,10 +3,13 @@
 
 using namespace std;
 
+#define API_VERSION "1"
+#define CLI_VERSION "1"
+
 // API Calls defined
-#define API_FUNCTION_HELLO			"?mode=welcome"
-#define API_FUNCTION_COUNT			"?mode=count"
-#define API_FUNCTION_FETCH_BATCH	"?batchsize=$BATCHSIZE&batchid=$BATCHID"
+#define API_FUNCTION_HELLO			"welcome"
+#define API_FUNCTION_COUNT			"count"
+#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$BATCHID"
 
 struct Metadata{
 
