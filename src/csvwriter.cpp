@@ -136,7 +136,7 @@ string CsvWriter::PrepareData(Metadata* meta) {
 
 		for (string cat: meta->meta_fields["category"]) {
 
-			tmp_line += ReplaceString(output_line, "$CATEGORY", cat);
+			tmp_line += ReplaceString(output_line, "$CATEGORY", "\"" + cat + "\"");
 		}
 
 		output_line = tmp_line;
@@ -207,7 +207,7 @@ string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 	}
 
 	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
-	if (filename.size() > 7) {
+	if (filename.size() > 7 && mModuleOptions.count("csv-same-dir") == 0) {
 
 		for (int i = 0; i < 3; ++i) {
 			path += filename.substr(i,1) + "/";
@@ -225,5 +225,7 @@ string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 	image_file.write((char *)&image_data[0], image_data.size());
 	image_file.close();		
 
+	mImagesWritten++;
+	
 	return path + filename;
 }

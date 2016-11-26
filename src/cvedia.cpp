@@ -77,6 +77,8 @@ int main(int argc, char* argv[]) {
 	
 	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 	lTermWidth = w.ws_col;
+
+	map<string,string> mod_options;
 	
 	argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
 	option::Stats  stats(usage, argc, argv);
@@ -86,7 +88,7 @@ int main(int argc, char* argv[]) {
 	if (parse.error())
 		return 1;
 	
-	if (options[HELP] || argc == 0 || !options[JOB]) {
+	if (options[HELP] || argc == 0 || !options[JOB] || !options[API]) {
 		option::printUsage(std::cout, usage);
 		return 0;
 	}
@@ -117,6 +119,10 @@ int main(int argc, char* argv[]) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 	
+	if (options[MOD_CSV_SAME_DIR].count() == 1) {
+		mod_options["csv-same-dir"] = "1";
+	}
+
 	if (options[OUTPUT].count() == 1) {
 		gOutputFormat = options[OUTPUT].arg;
 	
@@ -132,19 +138,19 @@ int main(int argc, char* argv[]) {
 		cout << "curl_global_init(): " << curl_easy_strerror(res) << endl;
 	}
 	
+	mod_options["base_dir"] = gBaseDir;
+
 	if (InitializeApi() == 0) {
-		StartExport("");
+		StartExport(mod_options);
 	}
 	
 	return 1;
 }
 
-int StartExport(string export_code) {
+int StartExport(map<string,string> options) {
 
 	time_t seconds;
 
-	map<string,string> options;
-	options["base_dir"] = gBaseDir;
 	options["create_test_file"] = "1";
 	options["create_train_file"] = "1";
 	options["create_validate_file"] = "1";
@@ -168,15 +174,15 @@ int StartExport(string export_code) {
 
 	p_reader->SetNumThreads(gDownloadThreads);
 
-	int batch_size = GetTotalDatasetSize(export_code);
+	int batch_size = GetTotalDatasetSize(options);
 	WriteDebugLog(string("Total expected dataset size is " + to_string(batch_size)).c_str());
 
 	// Fetch basic stats on export
-	int num_batches = ceil(batch_size / gBatchSize);
+	int num_batches = ceil(batch_size / (float)gBatchSize);
 
 	for (int batch_idx = 0; batch_idx < num_batches; batch_idx++) {
 
-		vector<Metadata* > meta_data = FetchBatch(export_code, batch_idx);
+		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 		if (meta_data.size() == 0) {
 			WriteDebugLog(string("No metadata return by API, end of dataset?").c_str());
@@ -195,12 +201,12 @@ int StartExport(string export_code) {
 		ReaderStats stats = p_reader->GetStats();
 
 		// Loop until all downloads are finished
-		while (stats.num_reads_completed < gBatchSize) {
+		while (stats.num_reads_completed < meta_data.size()) {
 
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				DisplayProgressBar(stats.num_reads_completed / (float)gBatchSize, stats.num_reads_completed, gBatchSize);
+				DisplayProgressBar(stats.num_reads_completed / (float)meta_data.size(), stats.num_reads_completed, meta_data.size());
 
 //				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
 
@@ -211,7 +217,7 @@ int StartExport(string export_code) {
 		}
 
 		// Display the 100% complete
-		DisplayProgressBar(1, stats.num_reads_completed, gBatchSize);
+		DisplayProgressBar(1, stats.num_reads_completed, meta_data.size());
 		cout << endl;
 
 		// Update stats for last time

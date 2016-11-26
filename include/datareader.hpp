@@ -12,10 +12,10 @@ struct ReadRequest {
 
 struct ReaderStats {
 
-	int num_reads_success;
-	int num_reads_empty;
-	int num_reads_error;
-	int num_reads_completed;	// Total of the above
+	unsigned int num_reads_success;
+	unsigned int num_reads_empty;
+	unsigned int num_reads_error;
+	unsigned int num_reads_completed;	// Total of the above
 
 	long bytes_read;
 };

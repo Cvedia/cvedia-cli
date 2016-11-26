@@ -26,6 +26,8 @@ public:
 	string mBaseDir;
 	string mExportName;
 
+	int mImagesWritten = 0;
+
 	map<string, string> mModuleOptions;
 
 private:
