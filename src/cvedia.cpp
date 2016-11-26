@@ -68,6 +68,8 @@ const option::Descriptor usage[] =
 	{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
 	{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
 	{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  },
+	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "\n             ##### CSV Module Options #####"},
+	{MOD_CSV_SAME_DIR,   0,"", "csv-same-dir",option::Arg::None, "  --csv-same-dir  \tDisable nested image storage on disk." },
 	{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e -n test_export --api=http://api.cvedia.com/\n" },
 	{0,0,0,0,0,0}
 };
@@ -88,7 +90,7 @@ int main(int argc, char* argv[]) {
 	if (parse.error())
 		return 1;
 	
-	if (options[HELP] || argc == 0 || !options[JOB] || !options[API]) {
+	if (options[HELP] || argc == 0 || !options[JOB]) {
 		option::printUsage(std::cout, usage);
 		return 0;
 	}
