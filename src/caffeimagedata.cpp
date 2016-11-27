@@ -56,14 +56,14 @@ string CaffeImageDataWriter::PrepareData(Metadata* meta) {
 	string file_format = "$FILENAME $CATEGORYID\n";
 
 	string output_line = file_format;
-	output_line = ReplaceString(output_line, "$FILENAME", meta->file_uri);
+	output_line = ReplaceString(output_line, "$FILENAME", meta->source.file_uri);
 
-	if (meta->meta_fields["category"].size() > 0) {
+	if (meta->groundtruth.meta_fields["category"].size() > 0) {
 
 		// Save a current copy of the line
 		string tmp_line = "";
 
-		for (string cat: meta->meta_fields["category"]) {
+		for (string cat: meta->groundtruth.meta_fields["category"]) {
 
 			int category_id = 0;
 

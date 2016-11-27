@@ -28,12 +28,14 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+#include "md5.hpp"
 #include "api.hpp"
 #include "functions.hpp"
 #include "optionparser.h"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
+#include "hdf5writer.hpp"
 #include "caffeimagedata.hpp"
 
 using namespace std;
@@ -64,7 +66,7 @@ const option::Descriptor usage[] =
 	{JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" },
 	{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" },
 	{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" },
-	{OUTPUT,   	0,"o", "output",option::Arg::Required, "  --output=<module>, -o <module>  \tSupported modules are CSV, CaffeImageData. (default: csv)" },
+	{OUTPUT,   	0,"o", "output",option::Arg::Required, "  --output=<module>, -o <module>  \tSupported modules are CSV, CaffeImageData, HDF5. (default: CSV)" },
 	{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
 	{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
 	{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  },
@@ -165,12 +167,14 @@ int StartExport(map<string,string> options) {
 		p_writer = new CsvWriter(gExportName, options);
 	} else if (gOutputFormat == "caffeimagedata") {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
+	} else if (gOutputFormat == "hdf5") {
+		p_writer = new Hdf5Writer(gExportName, options);
 	} else {
 		WriteErrorLog(string("Unsupported output module specified: " + gOutputFormat).c_str());
 	}
 
 	if (p_writer->Initialize() != 0) {
-		WriteErrorLog("Failed to initialize CsvWriter");
+		WriteErrorLog(string("Failed to initialize " + gOutputFormat).c_str());
 		return -1;
 	}
 
@@ -183,6 +187,8 @@ int StartExport(map<string,string> options) {
 	int num_batches = ceil(batch_size / (float)gBatchSize);
 
 	for (int batch_idx = 0; batch_idx < num_batches; batch_idx++) {
+
+		unsigned int queued_downloads = 0;
 
 		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
@@ -197,18 +203,27 @@ int StartExport(map<string,string> options) {
 
 		// Queue up all requests in this batch
 		for (Metadata* m : meta_data) {
-			p_reader->QueueUrl(m->filename, m->url);
+
+			// Download all images/raw/archives for both source and groundtruth
+			if (m->source.url != "") {
+				p_reader->QueueUrl(md5(m->source.url), m->source.url);
+				queued_downloads++;
+			}
+			if (m->groundtruth.url != "") {
+				p_reader->QueueUrl(md5(m->groundtruth.url), m->groundtruth.url);
+				queued_downloads++;
+			}
 		}
 
 		ReaderStats stats = p_reader->GetStats();
 
 		// Loop until all downloads are finished
-		while (stats.num_reads_completed < meta_data.size()) {
+		while (stats.num_reads_completed < queued_downloads) {
 
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				DisplayProgressBar(stats.num_reads_completed / (float)meta_data.size(), stats.num_reads_completed, meta_data.size());
+				DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
 
 //				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
 
@@ -219,7 +234,7 @@ int StartExport(map<string,string> options) {
 		}
 
 		// Display the 100% complete
-		DisplayProgressBar(1, stats.num_reads_completed, meta_data.size());
+		DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
 		cout << endl;
 
 		// Update stats for last time
@@ -234,14 +249,42 @@ int StartExport(map<string,string> options) {
 
 		for (Metadata* m : meta_data) {
 			// Find the request for a specific filename
-			ReadRequest* req = responses[m->filename];
 
-			if (req != NULL && req->read_data.size() > 0) {
-				// We found the download for a piece of metadata
-				m->image_data = req->read_data;
+			if (m->source.url != "") {	// Did we download something ?
+				ReadRequest* req = responses[md5(m->source.url)];
 
-				p_writer->WriteData(m);
+				if (req != NULL && req->read_data.size() > 0) {
+
+					// We found the download for a piece of metadata
+					if (m->source.type == METADATA_TYPE_IMAGE)
+						m->source.image_data = req->read_data;
+					else if (m->source.type == METADATA_TYPE_RAW)
+						m->source.raw_data = req->read_data;
+					else {
+						WriteErrorLog(string("Encountered download for unsupported source METADATA_TYPE: " + m->source.type).c_str());
+						return -1;
+					}
+				}				
 			}
+
+			if (m->groundtruth.url != "") {	// Did we download something ?
+				ReadRequest* req = responses[md5(m->groundtruth.url)];
+
+				if (req != NULL && req->read_data.size() > 0) {
+
+					// We found the download for a piece of metadata
+					if (m->groundtruth.type == METADATA_TYPE_IMAGE)
+						m->groundtruth.image_data = req->read_data;
+					else if (m->groundtruth.type == METADATA_TYPE_RAW)
+						m->groundtruth.raw_data = req->read_data;
+					else {
+						WriteErrorLog(string("Encountered download for unsupported groundtruth METADATA_TYPE: " + m->groundtruth.type).c_str());
+						return -1;
+					}
+				}				
+			}
+
+			p_writer->WriteData(m);
 		}
 
 		p_reader->ClearData();

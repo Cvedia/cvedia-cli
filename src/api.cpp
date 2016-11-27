@@ -137,7 +137,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 			if (obj.IsObject()) {
 
 				// Ok, object found in an array. so far so good. Lets start the metadata construction
-				Metadata* meta_entry = new Metadata;
+				Metadata* meta_record = new Metadata;
 
 				// Iterate through all object members
 				for (Value::ConstMemberIterator itr = obj.MemberBegin(); itr != obj.MemberEnd(); ++itr) {
@@ -145,27 +145,102 @@ vector<Metadata* > ParseFeed(const char * feed) {
 					string key = itr->name.GetString();
 
 					// Couple of key members that are required and processed seperately
-					if (key == "filename") {
-						meta_entry->filename = itr->value.GetString();
-					} else if (key == "url") {
-						meta_entry->url = itr->value.GetString();
-					} else if (key == "type") {
-						meta_entry->type = itr->value.GetInt();
-					} else {
-						// Generic optional fields follow
+					if (key == "type") {
+						meta_record->type = itr->value.GetInt();
+					} else if (key == "data") {
+
 						if (itr->value.IsArray()) {
 
-							int value_size = itr->value.Size();
+							int data_cnt = itr->value.Size();
+							for (int data_idx = 0; data_idx < data_cnt; ++data_idx) {
 
-							for (int value_idx = 0; value_idx < value_size; ++value_idx) {
-								meta_entry->meta_fields[key].push_back(itr->value[value_idx].GetString());
-							}
+								const Value &entryObj = itr->value[data_idx];
+
+								MetadataEntry meta_entry;
+
+								bool contains_source = false;
+								bool contains_groundtruth = false;
+
+								if (entryObj["type"].IsString()) {
+									meta_entry.type = entryObj["type"].GetString();
+								} else {									
+									WriteErrorLog("Metadata entry does not specify a 'type'");
+								}
+
+								// Iterate through all object members
+								for (Value::ConstMemberIterator entry_itr = entryObj.MemberBegin(); entry_itr != entryObj.MemberEnd(); ++entry_itr) {
+
+									string key = entry_itr->name.GetString();
+
+									if (key == "filename") {
+										meta_entry.filename = entry_itr->value.GetString();
+									} else if (key == "url") {
+										meta_entry.url = entry_itr->value.GetString();
+									} else if (key == "type") {
+										// Already set above
+									} else if (key == "value") {
+										if (meta_entry.type == METADATA_TYPE_LABEL) {
+
+											if (entry_itr->value.IsArray()) {
+
+												int value_size = entry_itr->value.Size();
+
+												for (int value_idx = 0; value_idx < value_size; ++value_idx) {
+													meta_entry.label.push_back(entry_itr->value[value_idx].GetString());
+												}
+											}
+										} else {
+											WriteErrorLog(string("Found 'value' for unsupported METADATA_TYPE: " + meta_entry.type).c_str());
+											goto invalid;										
+										}
+									} else if (key == "contains") {
+										if (entry_itr->value.IsArray()) {
+
+											int value_size = entry_itr->value.Size();
+											for (int value_idx = 0; value_idx < value_size; ++value_idx) {
+												string strval = entry_itr->value[value_idx].GetString();
+
+												// Remember what this entry is used for
+												if (strval == "source") {
+													contains_source = true;
+												} else if (strval == "groundtruth") {
+													contains_groundtruth = true;
+												}
+											}
+										}
+									} else {
+										// Generic optional fields follow
+										if (entry_itr->value.IsArray()) {
+
+											int value_size = entry_itr->value.Size();
+
+											for (int value_idx = 0; value_idx < value_size; ++value_idx) {
+												meta_entry.meta_fields[key].push_back(entry_itr->value[value_idx].GetString());
+											}
+										}
+									}
+								}	// End of object member iteration
+
+								// One must be specified at a minimum
+								if (!contains_source && !contains_groundtruth) {
+									WriteDebugLog("Metadata entry does indicate source or groundtruth usage!");
+								}
+
+								if (contains_source)
+									meta_record->source = meta_entry;
+								if (contains_groundtruth)
+									meta_record->groundtruth = meta_entry;		
+							} // End of loop over "data": []
 						}
+
+					} else {
+						WriteErrorLog(string("Unsupported fields found in body: " + key).c_str());
+						goto invalid;
 					}
 				}
 
 				// Store new Metadata in the output vector
-				meta_vector.push_back(meta_entry);
+				meta_vector.push_back(meta_record);
 
 			} else {
 				goto invalid;

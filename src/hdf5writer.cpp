@@ -16,38 +16,58 @@ using namespace std;
 
 #include "cvedia.hpp"
 #include "api.hpp"
-#include "csvwriter.hpp"
+#include "hdf5writer.hpp"
+#include "H5Cpp.h"
 
-CsvWriter::CsvWriter(string export_name, map<string, string> options) {
+using namespace H5;
 
-	WriteDebugLog("Initializing CsvWriter");
+Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
+
+	WriteDebugLog("Initializing Hdf5Writer");
+
+	H5::Exception::dontPrint();
 
 	mModuleOptions = options;
 	mExportName = export_name;
 }
 
-CsvWriter::~CsvWriter() {
+Hdf5Writer::~Hdf5Writer() {
 
-	if (mTrainFile.is_open())
+	if (mTrainFile.is_open()) {
 		mTrainFile.close();
-	if (mTestFile.is_open())
+		if (mTrainH5 != NULL) {
+			mTrainH5->close();
+			delete mTrainH5;
+		}
+	}
+	if (mTestFile.is_open()) {
 		mTestFile.close();
-	if (mValidateFile.is_open())
+		if (mTestH5 != NULL) {
+			mTestH5->close();
+			delete mTestH5;
+		}
+	}
+	if (mValidateFile.is_open()) {
 		mValidateFile.close();
+		if (mValidateH5 != NULL) {
+			mValidateH5->close();
+			delete mValidateH5;
+		}
+	}
 }
 
-WriterStats CsvWriter::GetStats() {
+WriterStats Hdf5Writer::GetStats() {
 
 	return mCsvStats;
 }
 
-void CsvWriter::ClearStats() {
+void Hdf5Writer::ClearStats() {
 
 	// Clear the stats structure
 	mCsvStats = {};
 }
 
-int CsvWriter::Initialize() {
+int Hdf5Writer::Initialize() {
 
 	// Clear the stats structure
 	mCsvStats = {};
@@ -91,19 +111,45 @@ int CsvWriter::Initialize() {
 			WriteErrorLog(string("Failed to open: " + mBasePath + "train.txt").c_str());
 			return -1;			
 		}
+
+		try {
+			mTrainH5 = new H5File(mBasePath + "train.h5", H5F_ACC_TRUNC);
+		} catch (H5::Exception e) {
+			WriteErrorLog(string("Failed to create: " + mBasePath + "train.h5").c_str());
+			WriteErrorLog(e.getCDetailMsg());
+			return -1;						
+		}
 	}
+
 	if (mCreateTestFile) {
 		mTestFile.open(mBasePath + "test.txt", ios::out | ios::trunc);
 		if (!mTestFile.is_open()) {
 			WriteErrorLog(string("Failed to open: " + mBasePath + "test.txt").c_str());
 			return -1;			
 		}
+
+		try {
+			mTestH5 = new H5File(mBasePath + "test.h5", H5F_ACC_TRUNC);
+		} catch (H5::Exception e) {
+			WriteErrorLog(string("Failed to create: " + mBasePath + "test.h5").c_str());
+			WriteErrorLog(e.getCDetailMsg());
+			return -1;						
+		}
 	}
+
 	if (mCreateValFile) {
 		mValidateFile.open(mBasePath + "validate.txt", ios::out | ios::trunc);
 		if (!mValidateFile.is_open()) {
 			WriteErrorLog(string("Failed to open: " + mBasePath + "validate.txt").c_str());
 			return -1;			
+		}
+
+		try {
+			mValidateH5 = new H5File(mBasePath + "validate.h5", H5F_ACC_TRUNC);
+		} catch (H5::Exception e) {
+			WriteErrorLog(string("Failed to create: " + mBasePath + "validate.h5").c_str());
+			WriteErrorLog(e.getCDetailMsg());
+			return -1;						
 		}
 	}
 
@@ -117,51 +163,52 @@ int CsvWriter::Initialize() {
 	return 0;
 }
 
-bool CsvWriter::ValidateData(vector<Metadata* > meta) {
+bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 
 	return true;
 }
 
-string CsvWriter::PrepareData(Metadata* meta) {
+string Hdf5Writer::PrepareData(Metadata* meta) {
 
 	string file_format = "$FILENAME $CATEGORY\n";
 
 	string output_line = file_format;
-	output_line = ReplaceString(output_line, "$FILENAME", meta->source.file_uri);
+/*
+	output_line = ReplaceString(output_line, "$FILENAME", meta->file_uri);
 
-	if (meta->groundtruth.label.size() > 0) {
+	if (meta->meta_fields["category"].size() > 0) {
 
 		// Save a current copy of the line
 		string tmp_line = "";
 
-		for (string cat: meta->groundtruth.label) {
+		for (string cat: meta->meta_fields["category"]) {
 
 			tmp_line += ReplaceString(output_line, "$CATEGORY", "\"" + cat + "\"");
 		}
 
 		output_line = tmp_line;
 	} else {
-		WriteErrorLog("CsvWriter::PrepareData() Missing 'category' field in input");
+		WriteErrorLog("Hdf5Writer::PrepareData() Missing 'category' field in input");
 		return "";
 	}
-
+*/
 	return output_line;
 }
 
-int CsvWriter::Finalize() {
+int Hdf5Writer::Finalize() {
 
 	return 0;
 }
 
-int CsvWriter::WriteData(Metadata* meta) {
+int Hdf5Writer::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
 		WriteErrorLog("Must call Initialize() first");
 		return -1;
 	}
 
-	string file_uri = WriteImageData(meta->source.filename, meta->source.image_data);
-	meta->source.file_uri = file_uri;
+//	string file_uri = WriteImageData(meta->filename, meta->image_data);
+//	meta->file_uri = file_uri;
 
 	string output_line = PrepareData(meta);
 	if (output_line == "")
@@ -196,7 +243,7 @@ int CsvWriter::WriteData(Metadata* meta) {
 	return 0;
 }
 
-string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
+string Hdf5Writer::WriteImageData(string filename, vector<uint8_t> image_data) {
 
 	string path = mBasePath + "data/";
 
