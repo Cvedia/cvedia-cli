@@ -258,13 +258,29 @@ int StartExport(map<string,string> options) {
 					// We found the download for a piece of metadata
 					if (m->source.type == METADATA_TYPE_IMAGE)
 						m->source.image_data = req->read_data;
-					else if (m->source.type == METADATA_TYPE_RAW)
-						m->source.raw_data = req->read_data;
-					else {
+					else if (m->source.type == METADATA_TYPE_RAW) {
+						if (m->source.dtype == "uint8")
+							m->source.uint8_raw_data = req->read_data;
+						else if (m->source.dtype == "float") {
+
+							unsigned int rsize = req->read_data.size() / 4;
+							if (rsize * 4 != req->read_data.size()) {
+								WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
+							}
+
+							for (unsigned int ridx = 0; ridx < rsize; ridx++) {
+								m->source.float_raw_data.push_back(((float *)&req->read_data)[ridx]);								
+							}
+						} else {
+							WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + m->source.dtype).c_str());
+						}
+					} else {
 						WriteErrorLog(string("Encountered download for unsupported source METADATA_TYPE: " + m->source.type).c_str());
 						return -1;
 					}
-				}				
+				} else {
+					WriteDebugLog(string("No download results for: " + m->source.url).c_str());
+				}
 			}
 
 			if (m->groundtruth.url != "") {	// Did we download something ?
@@ -275,18 +291,42 @@ int StartExport(map<string,string> options) {
 					// We found the download for a piece of metadata
 					if (m->groundtruth.type == METADATA_TYPE_IMAGE)
 						m->groundtruth.image_data = req->read_data;
-					else if (m->groundtruth.type == METADATA_TYPE_RAW)
-						m->groundtruth.raw_data = req->read_data;
-					else {
+					else if (m->groundtruth.type == METADATA_TYPE_RAW) {
+						if (m->groundtruth.dtype == "uint8")
+							m->groundtruth.uint8_raw_data = req->read_data;
+						else if (m->groundtruth.dtype == "float") {
+
+							unsigned int rsize = req->read_data.size() / 4;
+							if (rsize * 4 != req->read_data.size()) {
+								WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
+							}
+
+							for (unsigned int ridx = 0; ridx < rsize; ridx++) {
+								m->groundtruth.float_raw_data.push_back(((float *)&req->read_data)[ridx]);								
+							}
+						} else {
+							WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + m->groundtruth.dtype).c_str());
+						}
+					} else {
 						WriteErrorLog(string("Encountered download for unsupported groundtruth METADATA_TYPE: " + m->groundtruth.type).c_str());
 						return -1;
 					}
-				}				
+				} else {
+					WriteDebugLog(string("No download results for: " + m->source.url).c_str());
+				}
 			}
-
-			p_writer->WriteData(m);
 		}
 
+		bool is_valid = p_writer->ValidateData(meta_data);
+		if (!is_valid) {
+			WriteErrorLog(string("DataWriter returned falsed on ValidateData").c_str());
+			return -1;
+		}
+
+		for (Metadata* m : meta_data) {
+			p_writer->WriteData(m);
+		}
+		
 		p_reader->ClearData();
 
 		// We are completely done with the response data

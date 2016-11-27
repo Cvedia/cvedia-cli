@@ -141,7 +141,7 @@ string CsvWriter::PrepareData(Metadata* meta) {
 
 		output_line = tmp_line;
 	} else {
-		WriteErrorLog("CsvWriter::PrepareData() Missing 'category' field in input");
+		WriteErrorLog("CsvWriter::PrepareData() Label not set in Metadata");
 		return "";
 	}
 

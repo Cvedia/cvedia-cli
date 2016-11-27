@@ -161,10 +161,16 @@ vector<Metadata* > ParseFeed(const char * feed) {
 								bool contains_source = false;
 								bool contains_groundtruth = false;
 
+								// These keys are checked before the rest since they influence the
+								// parsing of the data
 								if (entryObj["type"].IsString()) {
 									meta_entry.type = entryObj["type"].GetString();
 								} else {									
 									WriteErrorLog("Metadata entry does not specify a 'type'");
+								}
+
+								if (entryObj["dtype"].IsString()) {
+									meta_entry.dtype = entryObj["dtype"].GetString();
 								}
 
 								// Iterate through all object members
@@ -178,6 +184,8 @@ vector<Metadata* > ParseFeed(const char * feed) {
 										meta_entry.url = entry_itr->value.GetString();
 									} else if (key == "type") {
 										// Already set above
+									} else if (key == "dtype") {
+										meta_entry.dtype = entry_itr->value.GetString();
 									} else if (key == "value") {
 										if (meta_entry.type == METADATA_TYPE_LABEL) {
 
@@ -189,6 +197,21 @@ vector<Metadata* > ParseFeed(const char * feed) {
 													meta_entry.label.push_back(entry_itr->value[value_idx].GetString());
 												}
 											}
+										} else if (meta_entry.type == METADATA_TYPE_NUMERIC) {
+											if (meta_entry.dtype == "") {
+												WriteErrorLog(string("Missing 'dtype' for METADATA_TYPE_NUMERIC").c_str());
+												goto invalid;
+											}
+
+											if (meta_entry.dtype == "int") {
+												meta_entry.int_value = entry_itr->value.GetInt();
+											} else if (meta_entry.dtype == "float") {
+												meta_entry.float_value = entry_itr->value.GetFloat();
+											} else {
+												WriteErrorLog(string("Invalid 'dtype' found for METADATA_TYPE_NUMERIC: " + meta_entry.dtype).c_str());
+												goto invalid;												
+											}
+
 										} else {
 											WriteErrorLog(string("Found 'value' for unsupported METADATA_TYPE: " + meta_entry.type).c_str());
 											goto invalid;										
