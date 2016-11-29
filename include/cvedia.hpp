@@ -5,6 +5,7 @@ using namespace std;
 
 extern int gDebug;
 
+string JoinStringVector(const vector<string>& vec, const char* delim);
 int StartExport(map<string,string> options);
 string ReplaceString(string subject, const string& search, const string& replace);
 void DisplayProgressBar(float progress, int cur_value, int max_value);

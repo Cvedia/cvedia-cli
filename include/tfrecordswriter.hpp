@@ -1,25 +1,22 @@
-#ifndef _HDF5WRITER_HPP
-#define _HDF5WRITER_HPP
+#ifndef _TFRECORDSWRITER_HPP
+#define _TFRECORDSWRITER_HPP
 
 using namespace std;
 
-#include "config.hpp"
+#ifdef HAVE_TFRECORDS
 
-#ifdef HAVE_HDF5
-
-#include "H5Cpp.h"
+#include "H5Cpp.hpp"
 #include "datawriter.hpp"
 #include "api.hpp"
 
 using namespace H5;
 
-
-class Hdf5Writer: public IDataWriter {
+class TfRecordsWriter: public IDataWriter {
 
 public:
-	Hdf5Writer(string export_name, map<string, string> options);
-	Hdf5Writer() {};
-	~Hdf5Writer();
+	TfRecordsWriter(string export_name, map<string, string> options);
+	TfRecordsWriter() {};
+	~TfRecordsWriter();
 
 	int WriteData(Metadata* meta);
 
@@ -71,6 +68,6 @@ private:
 	H5File *mH5File[3] = {};
 };
 
-#endif	// HAVE_HDF5
+#endif
 
 #endif

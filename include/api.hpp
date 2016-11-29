@@ -14,6 +14,7 @@ using namespace std;
 #define METADATA_TYPE_IMAGE			"image"
 #define METADATA_TYPE_RAW			"raw"
 #define METADATA_TYPE_LABEL			"label"
+#define METADATA_TYPE_NUMERIC		"numeric"
 
 struct MetadataEntry{
 	string type;
@@ -21,6 +22,7 @@ struct MetadataEntry{
 	string file_uri;
 	string filename;
 	string url;
+	string dtype;
 
 	int int_value;
 	float float_value;
@@ -31,7 +33,8 @@ struct MetadataEntry{
 	vector<string> label;
 
 	vector<uint8_t> image_data;
-	vector<uint8_t> raw_data;
+	vector<uint8_t> uint8_raw_data;
+	vector<float> float_raw_data;
 
 	// Optional fields follow
 	map<string, vector<string>> meta_fields;

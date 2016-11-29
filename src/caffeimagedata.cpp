@@ -14,6 +14,7 @@
 
 using namespace std;
 
+#include "config.hpp"
 #include "cvedia.hpp"
 #include "api.hpp"
 #include "csvwriter.hpp"

@@ -29,7 +29,8 @@ public:
 	virtual ~IDataWriter() {};
 
 	virtual int WriteData(Metadata* meta) = 0;
-	virtual string WriteImageData(string filename, vector<uint8_t> image_data) = 0;
+
+	virtual bool ValidateData(vector<Metadata* > meta) = 0;
 
 	virtual int Initialize() = 0;
 	virtual int Finalize() = 0;
@@ -38,7 +39,6 @@ public:
 	virtual void ClearStats() = 0;
 
 private:
-	virtual bool ValidateData(vector<Metadata* > meta) = 0;
 	virtual string PrepareData(Metadata* meta) = 0;
 };
 

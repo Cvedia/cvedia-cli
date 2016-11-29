@@ -28,6 +28,10 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+using namespace std;
+using namespace rapidjson;
+
+#include "config.hpp"
 #include "md5.hpp"
 #include "api.hpp"
 #include "functions.hpp"
@@ -35,11 +39,10 @@
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
+#include "tfrecordswriter.hpp"
 #include "hdf5writer.hpp"
 #include "caffeimagedata.hpp"
 
-using namespace std;
-using namespace rapidjson;
 
 // Initialize global variables
 int gDebug 		= 1;
@@ -59,24 +62,38 @@ string gVersion = CLI_VERSION;
 string gAPIVersion = API_VERSION;
 
 enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, MOD_CSV_SAME_DIR};
-const option::Descriptor usage[] =
-{
-	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, string("CVEDIA-CLI v." + gVersion + " API Compatibility v." + gAPIVersion + "\n\nUSAGE: cvedia [options]\n\nOptions:").c_str() },
-	{HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
-	{JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" },
-	{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" },
-	{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" },
-	{OUTPUT,   	0,"o", "output",option::Arg::Required, "  --output=<module>, -o <module>  \tSupported modules are CSV, CaffeImageData, HDF5. (default: CSV)" },
-	{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
-	{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
-	{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  },
-	{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "\n             ##### CSV Module Options #####"},
-	{MOD_CSV_SAME_DIR,   0,"", "csv-same-dir",option::Arg::None, "  --csv-same-dir  \tDisable nested image storage on disk." },
-	{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e -n test_export --api=http://api.cvedia.com/\n" },
-	{0,0,0,0,0,0}
-};
 
 int main(int argc, char* argv[]) {
+
+	vector<string> supported_output;
+	supported_output.push_back("CSV");
+	supported_output.push_back("CaffeImageData");
+#ifdef HAVE_HDF5
+	supported_output.push_back("HDF5");
+#endif
+#ifdef HAVE_TFRECORDS
+	supported_output.push_back("TFRecords");
+#endif
+
+	string output_string = JoinStringVector(supported_output, ",");
+
+	option::Descriptor usage[] =
+	{
+		{UNKNOWN, 	0,"" , ""    ,option::Arg::None, string("CVEDIA-CLI v." + gVersion + " API Compatibility v." + gAPIVersion + "\n\nUSAGE: cvedia [options]\n\nOptions:").c_str() },
+		{HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
+		{JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" },
+		{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" },
+		{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" },
+		{OUTPUT,   	0,"o", "output",option::Arg::Required, string("  --output=<module>, -o <module>  \tSupported modules are " + output_string + ". (default: CSV)").c_str() },
+		{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
+		{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
+		{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  },
+		{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "\n             ##### CSV Module Options #####"},
+		{MOD_CSV_SAME_DIR,   0,"", "csv-same-dir",option::Arg::None, "  --csv-same-dir  \tDisable nested image storage on disk." },
+		{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e -n test_export --api=http://api.cvedia.com/\n" },
+		{0,0,0,0,0,0}
+	};
+
 	struct winsize w;
 	
 	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -167,8 +184,10 @@ int StartExport(map<string,string> options) {
 		p_writer = new CsvWriter(gExportName, options);
 	} else if (gOutputFormat == "caffeimagedata") {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
+#ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
 		p_writer = new Hdf5Writer(gExportName, options);
+#endif
 	} else {
 		WriteErrorLog(string("Unsupported output module specified: " + gOutputFormat).c_str());
 	}
@@ -326,7 +345,7 @@ int StartExport(map<string,string> options) {
 		for (Metadata* m : meta_data) {
 			p_writer->WriteData(m);
 		}
-		
+
 		p_reader->ClearData();
 
 		// We are completely done with the response data
@@ -356,4 +375,19 @@ void DisplayProgressBar(float progress, int cur_value, int max_value) {
 	
 	cout << "] [" << to_string(cur_value) << "/" << to_string(max_value) << "]\r";
 	cout.flush();
+}
+
+string JoinStringVector(const vector<string>& vec, const char* delim)
+{
+	string out = "";
+
+	for (string s : vec) 
+	{
+		if (!out.empty())
+			out += string(delim) + " ";
+
+		out += s;
+	}
+
+	return out;
 }

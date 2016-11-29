@@ -15,20 +15,18 @@
 using namespace std;
 
 #include "config.hpp"
-
-#ifdef HAVE_HDF5
-
 #include "cvedia.hpp"
 #include "api.hpp"
-#include "hdf5writer.hpp"
+#include "tfrecordswriter.hpp"
 #include "H5Cpp.h"
 
 using namespace H5;
 
+#ifdef HAVE_TFRECORDS
 
-Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
+TfRecordsWriter::TfRecordsWriter(string export_name, map<string, string> options) {
 
-	WriteDebugLog("Initializing Hdf5Writer");
+	WriteDebugLog("Initializing TfRecordsWriter");
 
 //	H5::Exception::dontPrint();
 
@@ -36,7 +34,7 @@ Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
 	mExportName = export_name;
 }
 
-Hdf5Writer::~Hdf5Writer() {
+TfRecordsWriter::~TfRecordsWriter() {
 
 	if (mTrainFile.is_open()) {
 		mTrainFile.close();
@@ -61,18 +59,18 @@ Hdf5Writer::~Hdf5Writer() {
 	}
 }
 
-WriterStats Hdf5Writer::GetStats() {
+WriterStats TfRecordsWriter::GetStats() {
 
 	return mCsvStats;
 }
 
-void Hdf5Writer::ClearStats() {
+void TfRecordsWriter::ClearStats() {
 
 	// Clear the stats structure
 	mCsvStats = {};
 }
 
-int Hdf5Writer::Initialize() {
+int TfRecordsWriter::Initialize() {
 
 	// Clear the stats structure
 	mCsvStats = {};
@@ -169,7 +167,7 @@ int Hdf5Writer::Initialize() {
 	return 0;
 }
 
-bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
+bool TfRecordsWriter::ValidateData(vector<Metadata* > meta) {
 
 	// Only perform initialization once
 	if (!mInitialized) {
@@ -261,7 +259,7 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 }
 
 
-string Hdf5Writer::PrepareData(Metadata* meta) {
+string TfRecordsWriter::PrepareData(Metadata* meta) {
 
 	string file_format = "$FILENAME $CATEGORY\n";
 
@@ -270,12 +268,12 @@ string Hdf5Writer::PrepareData(Metadata* meta) {
 	return output_line;
 }
 
-int Hdf5Writer::Finalize() {
+int TfRecordsWriter::Finalize() {
 
 	return 0;
 }
 
-int Hdf5Writer::WriteData(Metadata* meta) {
+int TfRecordsWriter::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
 		WriteErrorLog("Must call Initialize() first");
@@ -342,7 +340,7 @@ int Hdf5Writer::WriteData(Metadata* meta) {
 	return 0;
 }
 
-const DataType& Hdf5Writer::ConvertDtype(string dtype) {
+const DataType& TfRecordsWriter::ConvertDtype(string dtype) {
 
 	if (dtype == "uint8")
 		return PredType::NATIVE_UCHAR;
@@ -355,7 +353,7 @@ const DataType& Hdf5Writer::ConvertDtype(string dtype) {
 	return PredType::NATIVE_UCHAR;
 }
 
-void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype) {
+void TfRecordsWriter::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype) {
 
 	// Get current extent and increase by 1
 	DataSpace tmp_space = dataset->getSpace();
