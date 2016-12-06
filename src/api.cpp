@@ -156,7 +156,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 
 								const Value &entryObj = itr->value[data_idx];
 
-								MetadataEntry meta_entry;
+								MetadataEntry* meta_entry = new MetadataEntry();;
 
 								bool contains_source = false;
 								bool contains_groundtruth = false;
@@ -164,13 +164,13 @@ vector<Metadata* > ParseFeed(const char * feed) {
 								// These keys are checked before the rest since they influence the
 								// parsing of the data
 								if (entryObj["type"].IsString()) {
-									meta_entry.type = entryObj["type"].GetString();
+									meta_entry->value_type = entryObj["type"].GetString();
 								} else {									
 									WriteErrorLog("Metadata entry does not specify a 'type'");
 								}
 
 								if (entryObj["dtype"].IsString()) {
-									meta_entry.dtype = entryObj["dtype"].GetString();
+									meta_entry->dtype = entryObj["dtype"].GetString();
 								}
 
 								// Iterate through all object members
@@ -179,41 +179,41 @@ vector<Metadata* > ParseFeed(const char * feed) {
 									string key = entry_itr->name.GetString();
 
 									if (key == "filename") {
-										meta_entry.filename = entry_itr->value.GetString();
+										meta_entry->filename = entry_itr->value.GetString();
 									} else if (key == "url") {
-										meta_entry.url = entry_itr->value.GetString();
+										meta_entry->url = entry_itr->value.GetString();
 									} else if (key == "type") {
 										// Already set above
 									} else if (key == "dtype") {
-										meta_entry.dtype = entry_itr->value.GetString();
+										meta_entry->dtype = entry_itr->value.GetString();
 									} else if (key == "value") {
-										if (meta_entry.type == METADATA_TYPE_LABEL) {
+										if (meta_entry->value_type == METADATA_VALUE_TYPE_LABEL) {
 
 											if (entry_itr->value.IsArray()) {
 
 												int value_size = entry_itr->value.Size();
 
 												for (int value_idx = 0; value_idx < value_size; ++value_idx) {
-													meta_entry.label.push_back(entry_itr->value[value_idx].GetString());
+													meta_entry->label.push_back(entry_itr->value[value_idx].GetString());
 												}
 											}
-										} else if (meta_entry.type == METADATA_TYPE_NUMERIC) {
-											if (meta_entry.dtype == "") {
-												WriteErrorLog(string("Missing 'dtype' for METADATA_TYPE_NUMERIC").c_str());
+										} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+											if (meta_entry->dtype == "") {
+												WriteErrorLog(string("Missing 'dtype' for METADATA_VALUE_TYPE_NUMERIC").c_str());
 												goto invalid;
 											}
 
-											if (meta_entry.dtype == "int") {
-												meta_entry.int_value = entry_itr->value.GetInt();
-											} else if (meta_entry.dtype == "float") {
-												meta_entry.float_value = entry_itr->value.GetFloat();
+											if (meta_entry->dtype == "int") {
+												meta_entry->int_value = entry_itr->value.GetInt();
+											} else if (meta_entry->dtype == "float") {
+												meta_entry->float_value = entry_itr->value.GetFloat();
 											} else {
-												WriteErrorLog(string("Invalid 'dtype' found for METADATA_TYPE_NUMERIC: " + meta_entry.dtype).c_str());
+												WriteErrorLog(string("Invalid 'dtype' found for METADATA_VALUE_TYPE_NUMERIC: " + meta_entry->dtype).c_str());
 												goto invalid;												
 											}
 
 										} else {
-											WriteErrorLog(string("Found 'value' for unsupported METADATA_TYPE: " + meta_entry.type).c_str());
+											WriteErrorLog(string("Found 'value' for unsupported METADATA_TYPE: " + meta_entry->value_type).c_str());
 											goto invalid;										
 										}
 									} else if (key == "contains") {
@@ -238,7 +238,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 											int value_size = entry_itr->value.Size();
 
 											for (int value_idx = 0; value_idx < value_size; ++value_idx) {
-												meta_entry.meta_fields[key].push_back(entry_itr->value[value_idx].GetString());
+												meta_entry->meta_fields[key].push_back(entry_itr->value[value_idx].GetString());
 											}
 										}
 									}
@@ -250,9 +250,12 @@ vector<Metadata* > ParseFeed(const char * feed) {
 								}
 
 								if (contains_source)
-									meta_record->source = meta_entry;
+									meta_entry->meta_type = METADATA_TYPE_SOURCE;
 								if (contains_groundtruth)
-									meta_record->groundtruth = meta_entry;		
+									meta_entry->meta_type = METADATA_TYPE_GROUND;
+
+								meta_record->entries.push_back(meta_entry);
+
 							} // End of loop over "data": []
 						}
 

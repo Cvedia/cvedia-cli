@@ -179,52 +179,45 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 
 		Metadata *m = meta[0];
 
-		// Start the actual write
-		if (m->source.type == METADATA_TYPE_RAW) {
-			if (m->source.dtype == "uint8")
-				mSourceDataDim = m->source.uint8_raw_data.size();
-			else if (m->source.dtype == "float")
-				mSourceDataDim = m->source.float_raw_data.size();
-			else {
-				WriteErrorLog(string("Unsupported dtype specified for METADATA_TYPE_RAW: " + m->source.dtype).c_str());
-				return false;
-			}
-		} else if (m->source.type == METADATA_TYPE_NUMERIC) {
-			if (m->source.dtype == "int")
-				mSourceDataDim = 1;
-			else if (m->source.dtype == "float")
-				mSourceDataDim = 1;
-			else {
-				WriteErrorLog(string("Unsupported dtype specified for METADATA_TYPE_NUMERIC: " + m->source.dtype).c_str());
-				return false;
-			}
-		} else {
-			WriteErrorLog(string("Unsupported type specified: " + m->source.type).c_str());
-			return false;
-		}
+		string sourceDtype;
+		string groundDtype;
 
-		// Start the actual write
-		if (m->groundtruth.type == METADATA_TYPE_RAW) {
-			if (m->groundtruth.dtype == "uint8")
-				mGroundDataDim = m->groundtruth.uint8_raw_data.size();
-			else if (m->groundtruth.dtype == "float")
-				mGroundDataDim = m->groundtruth.float_raw_data.size();
-			else {
-				WriteErrorLog(string("Unsupported dtype specified for METADATA_TYPE_RAW: " + m->groundtruth.dtype).c_str());
+		for (MetadataEntry* e : m->entries) {
+
+			int dataDim = 0;
+
+			// Start the actual write
+			if (e->value_type == METADATA_VALUE_TYPE_RAW) {
+				if (e->dtype == "uint8")
+					dataDim = e->uint8_raw_data.size();
+				else if (e->dtype == "float")
+					dataDim = e->float_raw_data.size();
+				else {
+					WriteErrorLog(string("Unsupported dtype specified for METADATA_VALUE_TYPE_RAW: " + e->dtype).c_str());
+					return false;
+				}
+			} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+				if (e->dtype == "int")
+					dataDim = 1;
+				else if (e->dtype == "float")
+					dataDim = 1;
+				else {
+					WriteErrorLog(string("Unsupported dtype specified for METADATA_VALUE_TYPE_NUMERIC: " + e->dtype).c_str());
+					return false;
+				}
+			} else {
+				WriteErrorLog(string("Unsupported value type specified: " + e->value_type).c_str());
 				return false;
 			}
-		} else if (m->groundtruth.type == METADATA_TYPE_NUMERIC) {
-			if (m->groundtruth.dtype == "int")
-				mGroundDataDim = 1;
-			else if (m->groundtruth.dtype == "float")
-				mGroundDataDim = 1;
-			else {
-				WriteErrorLog(string("Unsupported dtype specified for METADATA_TYPE_NUMERIC: " + m->groundtruth.dtype).c_str());
-				return false;
+
+			if (e->meta_type == METADATA_TYPE_SOURCE) {
+				mSourceDataDim = dataDim;
+				sourceDtype = e->dtype;
 			}
-		} else {
-			WriteErrorLog(string("Unsupported type specified: " + m->groundtruth.type).c_str());
-			return false;		
+			if (e->meta_type == METADATA_TYPE_GROUND) {
+				mGroundDataDim = dataDim;
+				groundDtype = e->dtype;
+			}
 		}
 
 		WriteDebugLog(string("mSourceDataDim = " + to_string(mSourceDataDim) + "  mGroundDataDim = " + to_string(mGroundDataDim)).c_str());
@@ -249,8 +242,8 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 		for (int i=0; i<3; i++) {
 			if (mH5File[i] != NULL) {
 
-				mDataSet[i] 	= new DataSet(mH5File[i]->createDataSet("data", (m->source.dtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSourceSpace, source_prop));
-				mLabelSet[i] 	= new DataSet(mH5File[i]->createDataSet("label", (m->groundtruth.dtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mGroundSpace, ground_prop));
+				mDataSet[i] 	= new DataSet(mH5File[i]->createDataSet("data", (sourceDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSourceSpace, source_prop));
+				mLabelSet[i] 	= new DataSet(mH5File[i]->createDataSet("label", (groundDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mGroundSpace, ground_prop));
 			}
 		}
 
@@ -306,38 +299,40 @@ int Hdf5Writer::WriteData(Metadata* meta) {
 	}
 
 	void *source_ptr = NULL, *ground_ptr = NULL;
+	string sourceDtype;
+	string groundDtype;
 
-	if (meta->source.type == METADATA_TYPE_RAW) {
+	for (MetadataEntry* e : meta->entries) {
 
-		if (meta->source.dtype == "uint8")
-			source_ptr = &meta->source.uint8_raw_data[0];
-		else if (meta->source.dtype == "float")
-			source_ptr = &meta->source.float_raw_data[0];
-	} else if (meta->source.type == METADATA_TYPE_NUMERIC) {
+		void *ptr = NULL;
 
-		if (meta->source.dtype == "int")
-			ground_ptr = &meta->source.int_value;
-		else if (meta->source.dtype == "float")
-			ground_ptr = &meta->source.float_value;		
-	}
+		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
 
-	if (meta->groundtruth.type == METADATA_TYPE_RAW) {
+			if (e->dtype == "uint8")
+				ptr = &e->uint8_raw_data[0];
+			else if (e->dtype == "float")
+				ptr = &e->float_raw_data[0];
+		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 
-		if (meta->groundtruth.dtype == "uint8")
-			ground_ptr = &meta->groundtruth.uint8_raw_data[0];
-		else if (meta->groundtruth.dtype == "float")
-			ground_ptr = &meta->groundtruth.float_raw_data[0];
-	} else if (meta->groundtruth.type == METADATA_TYPE_NUMERIC) {
+			if (e->dtype == "int")
+				ptr = &e->int_value;
+			else if (e->dtype == "float")
+				ptr = &e->float_value;		
+		}
 
-		if (meta->groundtruth.dtype == "int")
-			ground_ptr = &meta->groundtruth.int_value;
-		else if (meta->groundtruth.dtype == "float")
-			ground_ptr = &meta->groundtruth.float_value;		
+		if (e->meta_type == METADATA_TYPE_SOURCE) {
+			source_ptr = ptr;
+			sourceDtype = e->dtype;
+		}
+		if (e->meta_type == METADATA_TYPE_GROUND) {
+			ground_ptr = ptr;
+			groundDtype = e->dtype;
+		}
 	}
 
 	// Start the actual write
-	AppendEntry(mDataSet[meta->type], source_ptr, mSourceDataDim, ConvertDtype(meta->source.dtype));
-	AppendEntry(mLabelSet[meta->type], ground_ptr, mGroundDataDim, ConvertDtype(meta->groundtruth.dtype));
+	AppendEntry(mDataSet[meta->type], source_ptr, mSourceDataDim, ConvertDtype(sourceDtype));
+	AppendEntry(mLabelSet[meta->type], ground_ptr, mGroundDataDim, ConvertDtype(groundDtype));
 
 	return 0;
 }

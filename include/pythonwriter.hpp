@@ -1,21 +1,22 @@
-#ifndef _TFRECORDSWRITER_HPP
-#define _TFRECORDSWRITER_HPP
+#ifndef _PYTHONWRITER_HPP
+#define _PYTHONWRITER_HPP
 
 using namespace std;
 
 #include "config.hpp"
 
-#ifdef HAVE_TFRECORDS
+#ifdef HAVE_PYTHON
 
+#include "Python.h"
 #include "datawriter.hpp"
 #include "api.hpp"
 
-class TfRecordsWriter: public IDataWriter {
+class PythonWriter: public IDataWriter {
 
 public:
-	TfRecordsWriter(string export_name, map<string, string> options);
-	TfRecordsWriter() {};
-	~TfRecordsWriter();
+	PythonWriter(string export_name, map<string, string> options);
+	PythonWriter() {};
+	~PythonWriter();
 
 	int WriteData(Metadata* meta);
 
@@ -34,6 +35,12 @@ public:
 	map<string, string> mModuleOptions;
 
 private:
+
+	PyGILState_STATE gstate;
+
+	PyObject* pInitFn;
+	PyObject* pWriteFn;
+	PyObject* pFinalFn;
 
 	virtual bool ValidateData(vector<Metadata* > meta);
 	virtual string PrepareData(Metadata* meta);

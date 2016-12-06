@@ -127,15 +127,35 @@ string CsvWriter::PrepareData(Metadata* meta) {
 
 	string file_format = "$FILENAME $CATEGORY\n";
 
-	string output_line = file_format;
-	output_line = ReplaceString(output_line, "$FILENAME", meta->source.file_uri);
+	MetadataEntry* source = NULL;
+	MetadataEntry* ground = NULL;
 
-	if (meta->groundtruth.label.size() > 0) {
+	for (MetadataEntry* e : meta->entries) {
+		if (e->meta_type == METADATA_TYPE_SOURCE)
+			source = e;		
+		if (e->meta_type == METADATA_TYPE_GROUND)
+			ground = e;
+	}
+
+	string output_line = file_format;
+	output_line = ReplaceString(output_line, "$FILENAME", source->file_uri);
+
+	if (source == NULL) {
+		WriteErrorLog("CsvWriter::PrepareData() Missing SOURCE in Metadata");
+		return "";		
+	}
+
+	if (ground == NULL) {
+		WriteErrorLog("CsvWriter::PrepareData() Missing GROUND in Metadata");
+		return "";		
+	}
+
+	if (ground->label.size() > 0) {
 
 		// Save a current copy of the line
 		string tmp_line = "";
 
-		for (string cat: meta->groundtruth.label) {
+		for (string cat: ground->label) {
 
 			tmp_line += ReplaceString(output_line, "$CATEGORY", "\"" + cat + "\"");
 		}
@@ -161,8 +181,15 @@ int CsvWriter::WriteData(Metadata* meta) {
 		return -1;
 	}
 
-	string file_uri = WriteImageData(meta->source.filename, meta->source.image_data);
-	meta->source.file_uri = file_uri;
+	MetadataEntry* source = NULL;
+
+	for (MetadataEntry* e : meta->entries) {
+		if (e->meta_type == METADATA_TYPE_SOURCE)
+			source = e;		
+	}
+
+	string file_uri = WriteImageData(source->filename, source->image_data);
+	source->file_uri = file_uri;
 
 	string output_line = PrepareData(meta);
 	if (output_line == "")
@@ -208,7 +235,7 @@ string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 	}
 
 	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
-	if (filename.size() > 7 && mModuleOptions.count("csv-same-dir") == 0) {
+	if (filename.size() > 7 && mModuleOptions.count("images-same-dir") == 0) {
 
 		for (int i = 0; i < 3; ++i) {
 			path += filename.substr(i,1) + "/";

@@ -54,17 +54,27 @@ int CaffeImageDataWriter::Finalize() {
 
 string CaffeImageDataWriter::PrepareData(Metadata* meta) {
 
+	MetadataEntry* source = NULL;
+	MetadataEntry* ground = NULL;
+
+	for (MetadataEntry* e : meta->entries) {
+		if (e->meta_type == METADATA_TYPE_SOURCE)
+			source = e;		
+		if (e->meta_type == METADATA_TYPE_GROUND)
+			ground = e;
+	}
+
 	string file_format = "$FILENAME $CATEGORYID\n";
 
 	string output_line = file_format;
-	output_line = ReplaceString(output_line, "$FILENAME", meta->source.file_uri);
+	output_line = ReplaceString(output_line, "$FILENAME", source->file_uri);
 
-	if (meta->groundtruth.meta_fields["category"].size() > 0) {
+	if (ground->meta_fields["category"].size() > 0) {
 
 		// Save a current copy of the line
 		string tmp_line = "";
 
-		for (string cat: meta->groundtruth.meta_fields["category"]) {
+		for (string cat: ground->meta_fields["category"]) {
 
 			int category_id = 0;
 

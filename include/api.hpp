@@ -11,13 +11,18 @@ using namespace std;
 #define API_FUNCTION_COUNT			"count.php"
 #define API_FUNCTION_FETCH_BATCH	"fetch.php?size=$BATCHSIZE&offset=$BATCHID"
 
-#define METADATA_TYPE_IMAGE			"image"
-#define METADATA_TYPE_RAW			"raw"
-#define METADATA_TYPE_LABEL			"label"
-#define METADATA_TYPE_NUMERIC		"numeric"
+#define METADATA_VALUE_TYPE_IMAGE	"image"
+#define METADATA_VALUE_TYPE_RAW		"raw"
+#define METADATA_VALUE_TYPE_LABEL	"label"
+#define METADATA_VALUE_TYPE_NUMERIC	"numeric"
+
+#define METADATA_TYPE_SOURCE		"source"
+#define METADATA_TYPE_GROUND		"ground"
 
 struct MetadataEntry{
-	string type;
+
+	string meta_type;
+	string value_type;
 
 	string file_uri;
 	string filename;
@@ -44,8 +49,7 @@ struct Metadata{
 
 	int type;
 
-	MetadataEntry source;
-	MetadataEntry groundtruth;
+	vector<MetadataEntry* > entries;
 };
 
 #include "datawriter.hpp"
