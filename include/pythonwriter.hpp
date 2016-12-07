@@ -45,6 +45,7 @@ private:
 	virtual bool ValidateData(vector<Metadata* > meta);
 	virtual string PrepareData(Metadata* meta);
 	string WriteImageData(string filename, vector<uint8_t> image_data);
+	void AddToDict(PyObject* dict, PyObject* key, PyObject* val);
 
 	WriterStats mCsvStats;
 

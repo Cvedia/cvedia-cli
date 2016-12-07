@@ -66,8 +66,14 @@ void PythonWriter::ClearStats() {
 int PythonWriter::Initialize() {
 
 	dlopen("libpython3.5m.so", RTLD_NOW | RTLD_GLOBAL);
-	Py_Initialize();
+	Py_InitializeEx(0);
+	PyEval_InitThreads();
 	import_array();
+
+	PyGILState_STATE gstate;
+	gstate = PyGILState_Ensure();
+
+	PySys_SetArgvEx(0, NULL, 0);
 
 	ifstream script_file("python/tfrecordswriter.py");
 	if (script_file == NULL) {
@@ -118,6 +124,10 @@ int PythonWriter::Initialize() {
         WriteErrorLog("Could not find 'finalize' def in Python script");
 		return -1;
 	}
+	
+	// Hold on to these for later
+	Py_XINCREF(pWriteFn);
+	Py_XINCREF(pFinalFn);
 
     Py_XDECREF(pModule);
 
@@ -127,7 +137,7 @@ int PythonWriter::Initialize() {
     vector<PyObject* > pyObjs;
 
     // Convert our std::map to a python dictionary
-    for(auto const& entry : mModuleOptions) {
+    for (auto const& entry : mModuleOptions) {
     	PyObject* key = PyUnicode_FromString(entry.first.c_str());
     	PyObject* val = PyUnicode_FromString(entry.second.c_str());
 
@@ -140,10 +150,16 @@ int PythonWriter::Initialize() {
 	// Put dictionary in a tuple
 	PyObject* pTuple = PyTuple_New(1);
 	PyTuple_SetItem( pTuple, 0, dict);
-	Py_INCREF(pTuple);
+	Py_XINCREF(pTuple);
 
 	// Call the initialize function of our python script
 	PyObject* rslt = PyObject_CallObject(pInitFn, pTuple);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return -1;
+	}
+
 	Py_XDECREF(pInitFn);
 	Py_XDECREF(rslt);
 	Py_XDECREF(pTuple);
@@ -154,6 +170,8 @@ int PythonWriter::Initialize() {
 		Py_XDECREF(obj);
 
 	mInitialized = 1;
+
+//	PyGILState_Release(gstate);
 
 	return 0;
 }
@@ -186,13 +204,10 @@ int PythonWriter::WriteData(Metadata* meta) {
 	}
 
 	MetadataEntry* source = NULL;
-	MetadataEntry* ground = NULL;
 
 	for (MetadataEntry* e : meta->entries) {
 		if (e->meta_type == METADATA_TYPE_SOURCE)
 			source = e;		
-		if (e->meta_type == METADATA_TYPE_GROUND)
-			ground = e;
 	}
 
 	if (mModuleOptions.count("images-external")) {
@@ -201,36 +216,127 @@ int PythonWriter::WriteData(Metadata* meta) {
 	}
 
     PyObject* dict = PyDict_New();
-    vector<PyObject* > pyObjs;
 
-    // Convert our Metadata to a python dictionary
-	PyObject* key = NULL;
-	PyObject* val = NULL; 
+    PyObject* pyListSource = PyList_New(0);
+    PyObject* pyListGround = PyList_New(0);
 
-	key = PyUnicode_FromString("type");
-	val = PyUnicode_FromString(to_string(meta->type).c_str());
+	PyObject* pTuple = PyTuple_New(3);
 
-	PyDict_SetItem(dict, key, val);
+	AddToDict(dict, PyUnicode_FromString("type"), PyUnicode_FromString(meta->type.c_str()));
+	PyTuple_SetItem(pTuple, 0, dict);
 
-	pyObjs.push_back(key);
-	pyObjs.push_back(val);
+	for (MetadataEntry* e : meta->entries) {
+	    PyObject* meta_dict = PyDict_New();
 
-	// Put dictionary in a tuple
-	PyObject* pTuple = PyTuple_New(1);
-	PyTuple_SetItem( pTuple, 0, dict);
-	Py_INCREF(pTuple);
+		AddToDict(meta_dict, PyUnicode_FromString("value_type"), PyUnicode_FromString(e->value_type.c_str()));
+
+		// We need to convert a vector to python array. This is either raw telemetry 
+		// or raw image format
+		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
+
+			PyObject* pyArr;
+			npy_intp dims[1];
+
+			// Check if we're in Byte or Float format
+			if (e->dtype == "uint8") {
+				dims[0] = e->uint8_raw_data.size();
+
+				// Create new array
+				pyArr = PyArray_SimpleNewFromData(1, dims, NPY_UINT8, &e->uint8_raw_data[0]);
+
+			} else if (e->dtype == "float") {
+				dims[0] = e->float_raw_data.size();
+				
+				// Create new array
+				pyArr = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, &e->float_raw_data[0]);
+
+			} else {
+				WriteErrorLog(string("Unsupported dtype '" + e->dtype + "' passed").c_str());
+				return -1;
+			}
+
+			// Add numpy array to dictionary	
+			AddToDict(meta_dict, PyUnicode_FromString("data"), pyArr);
+
+		// Data is a regular image. Pass as an array nontheless
+		} else if (e->value_type == METADATA_VALUE_TYPE_IMAGE) {
+			
+			PyObject* pyArr;
+			npy_intp dims[1] = {(npy_intp)e->image_data.size()};
+
+			// Create new array
+			pyArr = PyArray_SimpleNewFromData(1, dims, NPY_BYTE, &e->image_data[0]);
+
+			// Add numpy array to dictionary
+			AddToDict(meta_dict, PyUnicode_FromString("imagedata"), pyArr);
+
+		// Numerical value passed, check in which format
+		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+
+			if (e->dtype == "int") {
+				AddToDict(meta_dict, PyUnicode_FromString("value"), PyLong_FromLong(e->int_value));
+			} else if (e->dtype == "float") {
+				AddToDict(meta_dict, PyUnicode_FromString("value"), PyFloat_FromDouble(e->float_value));
+			} else {
+				WriteErrorLog(string("Unsupported dtype '" + e->dtype + "' passed").c_str());
+				return -1;				
+			}
+		}
+
+		if (e->dtype != "") {
+			AddToDict(meta_dict, PyUnicode_FromString("dtype"), PyUnicode_FromString(e->dtype.c_str()));
+		}
+
+		if (e->file_uri != "") {
+			AddToDict(meta_dict, PyUnicode_FromString("file_uri"), PyUnicode_FromString(e->file_uri.c_str()));
+		}
+
+		if (e->filename != "") {
+			AddToDict(meta_dict, PyUnicode_FromString("filename"), PyUnicode_FromString(e->filename.c_str()));
+		}
+
+		if (e->meta_type == METADATA_TYPE_SOURCE)
+			PyList_Append(pyListSource, meta_dict);
+		else if (e->meta_type == METADATA_TYPE_GROUND)
+			PyList_Append(pyListGround, meta_dict);
+		else {
+			WriteErrorLog("Unsupported meta_type encountered");
+			return -1;			
+		}
+	
+		Py_XDECREF(meta_dict);
+	}
+
+	// Store the 2nd and 3rd argument
+	PyTuple_SetItem(pTuple, 1, pyListSource);
+	PyTuple_SetItem(pTuple, 2, pyListGround);
 
 	// Call the initialize function of our python script
 	PyObject* rslt = PyObject_CallObject(pWriteFn, pTuple);
-	Py_XDECREF(rslt);
-	Py_XDECREF(pTuple);
-	Py_XDECREF(dict);
 
-	// Objects are no longer required
-	for (PyObject* obj : pyObjs)
-		Py_XDECREF(obj);
+	Py_XDECREF(pTuple);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return -1;
+	}
+
+	if (!PyObject_IsTrue(rslt)) {
+		Py_XDECREF(rslt);
+		WriteErrorLog("Call to Python function 'write_data' failed");
+		return -1;
+	}
+
+	Py_XDECREF(rslt);
 
 	return 0;
+}
+
+void PythonWriter::AddToDict(PyObject* dict, PyObject* key, PyObject* val) {
+
+	PyDict_SetItem(dict, key, val);
+	Py_XDECREF(key);
+	Py_XDECREF(val);
 }
 
 string PythonWriter::WriteImageData(string filename, vector<uint8_t> image_data) {

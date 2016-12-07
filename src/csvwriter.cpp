@@ -195,21 +195,21 @@ int CsvWriter::WriteData(Metadata* meta) {
 	if (output_line == "")
 		return -1;
 
-	if (meta->type == DATA_TRAIN) {
+	if (meta->type == METADATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			
 			return -1;
 		}
 
 		mTrainFile << output_line;
-	} else if (meta->type == DATA_TEST) {
+	} else if (meta->type == METADATA_TEST) {
 		if (!mCreateTestFile) {
 			WriteErrorLog("Test file not specified but data contains DATA_TEST");			
 			return -1;
 		}
 
 		mTestFile << output_line;
-	} else if (meta->type == DATA_VALIDATE) {
+	} else if (meta->type == METADATA_VALIDATE) {
 		if (!mCreateValFile) {
 			WriteErrorLog("Validate file not specified but data contains DATA_VALIDATE");			
 			return -1;
@@ -217,7 +217,7 @@ int CsvWriter::WriteData(Metadata* meta) {
 
 		mValidateFile << output_line;
 	} else {
-		WriteErrorLog(string("API returned unsupported file type: " + to_string(meta->type)).c_str());			
+		WriteErrorLog(string("API returned unsupported file type: " + meta->type).c_str());			
 		return -1;
 	}
 

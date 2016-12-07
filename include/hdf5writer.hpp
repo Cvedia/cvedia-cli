@@ -56,8 +56,8 @@ private:
 	DataSpace *mSourceSpace;
 	DataSpace *mGroundSpace;
 
-	DataSet *mDataSet[3];
-	DataSet *mLabelSet[3];
+	map<string, DataSet* > mDataSet;
+	map<string, DataSet* > mLabelSet;
 
 	hsize_t mSourceDataDim = 0;
 	hsize_t mGroundDataDim = 0;
@@ -68,7 +68,7 @@ private:
 	ofstream mValidateFile;
 
 	// The actual H5 files
-	H5File *mH5File[3] = {};
+	map<string, H5File* > mH5File;
 };
 
 #endif	// HAVE_HDF5

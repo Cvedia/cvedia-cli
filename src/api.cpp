@@ -27,6 +27,7 @@
 #include "rapidjson/stringbuffer.h"
 
 #include "globals.hpp"
+#include "md5.hpp"
 #include "api.hpp"
 #include "optionparser.h"
 #include "cvedia.hpp"
@@ -146,7 +147,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 
 					// Couple of key members that are required and processed seperately
 					if (key == "type") {
-						meta_record->type = itr->value.GetInt();
+						meta_record->type = itr->value.GetString();
 					} else if (key == "data") {
 
 						if (itr->value.IsArray()) {
@@ -156,7 +157,7 @@ vector<Metadata* > ParseFeed(const char * feed) {
 
 								const Value &entryObj = itr->value[data_idx];
 
-								MetadataEntry* meta_entry = new MetadataEntry();;
+								MetadataEntry* meta_entry = new MetadataEntry();
 
 								bool contains_source = false;
 								bool contains_groundtruth = false;
@@ -247,6 +248,16 @@ vector<Metadata* > ParseFeed(const char * feed) {
 								// One must be specified at a minimum
 								if (!contains_source && !contains_groundtruth) {
 									WriteDebugLog("Metadata entry does indicate source or groundtruth usage!");
+								}
+
+								// No filename was passed by API. Lets generate one
+								if (meta_entry->filename == "") {
+									meta_entry->filename = md5(meta_entry->url);
+
+									if (meta_entry->dtype == "jpeg")
+										meta_entry->filename += ".jpg";
+									else if (meta_entry->dtype == "png")
+										meta_entry->filename += ".png";
 								}
 
 								if (contains_source)

@@ -40,23 +40,23 @@ Hdf5Writer::~Hdf5Writer() {
 
 	if (mTrainFile.is_open()) {
 		mTrainFile.close();
-		if (mH5File[DATA_TRAIN] != NULL) {
-			mH5File[DATA_TRAIN]->close();
-			delete mH5File[DATA_TRAIN];
+		if (mH5File[METADATA_TRAIN] != NULL) {
+			mH5File[METADATA_TRAIN]->close();
+			delete mH5File[METADATA_TRAIN];
 		}
 	}
 	if (mTestFile.is_open()) {
 		mTestFile.close();
-		if (mH5File[DATA_TEST] != NULL) {
-			mH5File[DATA_TEST]->close();
-			delete mH5File[DATA_TEST];
+		if (mH5File[METADATA_TEST] != NULL) {
+			mH5File[METADATA_TEST]->close();
+			delete mH5File[METADATA_TEST];
 		}
 	}
 	if (mValidateFile.is_open()) {
 		mValidateFile.close();
-		if (mH5File[DATA_VALIDATE] != NULL) {
-			mH5File[DATA_VALIDATE]->close();
-			delete mH5File[DATA_VALIDATE];
+		if (mH5File[METADATA_VALIDATE] != NULL) {
+			mH5File[METADATA_VALIDATE]->close();
+			delete mH5File[METADATA_VALIDATE];
 		}
 	}
 }
@@ -118,7 +118,7 @@ int Hdf5Writer::Initialize() {
 		}
 
 		try {
-			mH5File[DATA_TRAIN] = new H5File(mBasePath + "train.h5", H5F_ACC_TRUNC);
+			mH5File[METADATA_TRAIN] = new H5File(mBasePath + "train.h5", H5F_ACC_TRUNC);
 			mTrainFile << mBasePath << "train.h5" << endl;
 		} catch (H5::Exception e) {
 			WriteErrorLog(string("Failed to create: " + mBasePath + "train.h5").c_str());
@@ -135,7 +135,7 @@ int Hdf5Writer::Initialize() {
 		}
 
 		try {
-			mH5File[DATA_TEST] = new H5File(mBasePath + "test.h5", H5F_ACC_TRUNC);
+			mH5File[METADATA_TEST] = new H5File(mBasePath + "test.h5", H5F_ACC_TRUNC);
 			mTestFile << mBasePath << "test.h5" << endl;
 		} catch (H5::Exception e) {
 			WriteErrorLog(string("Failed to create: " + mBasePath + "test.h5").c_str());
@@ -152,7 +152,7 @@ int Hdf5Writer::Initialize() {
 		}
 
 		try {
-			mH5File[DATA_VALIDATE] = new H5File(mBasePath + "validate.h5", H5F_ACC_TRUNC);
+			mH5File[METADATA_VALIDATE] = new H5File(mBasePath + "validate.h5", H5F_ACC_TRUNC);
 			mValidateFile << mBasePath << "validate.h5" << endl;			
 		} catch (H5::Exception e) {
 			WriteErrorLog(string("Failed to create: " + mBasePath + "validate.h5").c_str());
@@ -239,12 +239,10 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 		ground_prop.setChunk(2, ground_chunk_dims);
 
 		// Create the chunked dataset.  Note the use of pointer.
-		for (int i=0; i<3; i++) {
-			if (mH5File[i] != NULL) {
+	    for(auto const& file : mH5File) {
 
-				mDataSet[i] 	= new DataSet(mH5File[i]->createDataSet("data", (sourceDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSourceSpace, source_prop));
-				mLabelSet[i] 	= new DataSet(mH5File[i]->createDataSet("label", (groundDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mGroundSpace, ground_prop));
-			}
+			mDataSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet("data", (sourceDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSourceSpace, source_prop));
+			mLabelSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet("label", (groundDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mGroundSpace, ground_prop));
 		}
 
 		mInitialized = true;
@@ -275,26 +273,26 @@ int Hdf5Writer::WriteData(Metadata* meta) {
 		return -1;
 	}
 
-	if (meta->type == DATA_TRAIN) {
+	if (meta->type == METADATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			
 			return -1;
 		}
 
-	} else if (meta->type == DATA_TEST) {
+	} else if (meta->type == METADATA_TEST) {
 		if (!mCreateTestFile) {
 			WriteErrorLog("Test file not specified but data contains DATA_TEST");			
 			return -1;
 		}
 
-	} else if (meta->type == DATA_VALIDATE) {
+	} else if (meta->type == METADATA_VALIDATE) {
 		if (!mCreateValFile) {
 			WriteErrorLog("Validate file not specified but data contains DATA_VALIDATE");			
 			return -1;
 		}
 
 	} else {
-		WriteErrorLog(string("API returned unsupported file type: " + to_string(meta->type)).c_str());			
+		WriteErrorLog(string("API returned unsupported file type: " + meta->type).c_str());			
 		return -1;
 	}
 

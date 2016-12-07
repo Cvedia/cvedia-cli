@@ -40,7 +40,6 @@ using namespace rapidjson;
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
-#include "tfrecordswriter.hpp"
 #include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "caffeimagedata.hpp"
@@ -356,13 +355,32 @@ int StartExport(map<string,string> options) {
 
 		bool is_valid = p_writer->ValidateData(meta_data);
 		if (!is_valid) {
-			WriteErrorLog(string("DataWriter returned falsed on ValidateData").c_str());
+			WriteErrorLog(string("DataWriter returned false on ValidateData").c_str());
 			return -1;
 		}
 
+		int to_write = meta_data.size();
+		int cur_write = 0;
+
 		for (Metadata* m : meta_data) {
-			p_writer->WriteData(m);
+
+			if (time(NULL) != seconds) {
+				DisplayProgressBar(cur_write / (float)to_write, cur_write, to_write);
+
+				seconds = time(NULL);
+			}
+
+			int res = p_writer->WriteData(m);
+			if (res != 0) {
+				WriteErrorLog(string("WriteData returned non zero").c_str());
+				return -1;
+			}
+
+			cur_write++;
 		}
+
+		DisplayProgressBar(1, cur_write, to_write);
+		cout << endl;
 
 		p_reader->ClearData();
 

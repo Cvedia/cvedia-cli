@@ -19,6 +19,10 @@ using namespace std;
 #define METADATA_TYPE_SOURCE		"source"
 #define METADATA_TYPE_GROUND		"ground"
 
+#define METADATA_TRAIN				"train"
+#define METADATA_TEST				"test"
+#define METADATA_VALIDATE			"validate"
+
 struct MetadataEntry{
 
 	string meta_type;
@@ -37,7 +41,12 @@ struct MetadataEntry{
 
 	vector<string> label;
 
-	vector<uint8_t> image_data;
+	// This metadata applies to all image or raw data vectors
+	int data_channels;
+	int data_width;
+	int data_height;
+
+	vector<uint8_t> image_data;	// Difference between image_data and uint8_raw_data is that image_data is PNG/JPEG compressed
 	vector<uint8_t> uint8_raw_data;
 	vector<float> float_raw_data;
 
@@ -47,7 +56,7 @@ struct MetadataEntry{
 
 struct Metadata{
 
-	int type;
+	string type;
 
 	vector<MetadataEntry* > entries;
 };
