@@ -25,6 +25,8 @@
 #include <unistd.h>
 #include <curl/curl.h>
 #include <sys/ioctl.h>
+#include <archive.h>
+#include <archive_entry.h> 
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -291,8 +293,6 @@ int StartExport(map<string,string> options) {
 			if (time(NULL) != seconds) {
 				DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
 
-//				cout << batch_idx << " " << stats.num_reads_success << " " << stats.num_reads_empty << " " << stats.num_reads_error << endl;
-
 				seconds = time(NULL);
 			}
 
@@ -311,10 +311,18 @@ int StartExport(map<string,string> options) {
 
 		p_reader->ClearStats();
 
+		// Downloading finished, gather all cURL responses
 		map<string, ReadRequest* > responses = p_reader->GetAllData();
+
+		// Same as the original meta_data vector except archives have been unpacked
+		// and their 'archive' entries removed. This all makes sure archives get 
+		// expanded in the same place inside the vector
+		vector<Metadata* > meta_data_unpacked;
 
 		for (Metadata* m : meta_data) {
 			// Find the request for a specific filename
+
+			bool skip_meta_entry = false;
 
 			for (MetadataEntry* entry : m->entries) {
 
@@ -324,9 +332,10 @@ int StartExport(map<string,string> options) {
 					if (req != NULL && req->read_data.size() > 0) {
 
 						// We found the download for a piece of metadata
-						if (entry->value_type == METADATA_VALUE_TYPE_IMAGE)
+						if (entry->value_type == METADATA_VALUE_TYPE_IMAGE) {
 							entry->image_data = req->read_data;
-						else if (entry->value_type == METADATA_VALUE_TYPE_RAW) {
+
+						} else if (entry->value_type == METADATA_VALUE_TYPE_RAW) {
 							if (entry->dtype == "uint8")
 								entry->uint8_raw_data = req->read_data;
 							else if (entry->dtype == "float") {
@@ -342,6 +351,121 @@ int StartExport(map<string,string> options) {
 							} else {
 								WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + entry->dtype).c_str());
 							}
+
+						} else if (entry->value_type == METADATA_VALUE_TYPE_ARCHIVE) {
+							// Archive found, start unpacking
+							struct archive_entry* a_entry;
+							struct archive* ar = archive_read_new();
+							archive_read_support_filter_all(ar);
+							archive_read_support_format_all(ar);
+
+							int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
+							if (r == ARCHIVE_FATAL) {
+								WriteErrorLog(string("Failed to open archive at: " + entry->url).c_str());
+								return -1;
+							}
+
+							// Save the file_id.diz for the end so we know all images have been loaded
+							struct ReadRequest* file_id = NULL;
+
+							while (archive_read_next_header(ar, &a_entry) == ARCHIVE_OK) {
+	
+								const uint8_t* buff;
+								size_t size;
+								off_t offset;
+
+								string file_name(archive_entry_pathname(a_entry));
+
+								struct ReadRequest* new_req = new ReadRequest();
+
+								new_req->url = entry->url;
+								new_req->id = "";
+								new_req->status = 200;
+
+								int file_size = 0;
+
+								for (;;) {
+									r = archive_read_data_block(ar, (const void **)&buff, &size, &offset);
+
+									if (r == ARCHIVE_EOF) {
+										// Store file as if we got it from cURL
+										if (file_name == "file_id.diz") {
+
+											file_id = new_req;
+
+										} else {
+											responses[md5(file_name)] = new_req;
+										}
+										break;
+									}
+
+									// Insert data in the request buffer
+									new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
+									file_size += size;
+								}
+							}
+
+							if (file_id == NULL) {
+								WriteErrorLog(string(entry->url + " did not contain a file_id.diz").c_str());
+								return -1;								
+							}
+
+							// Make sure we NULL terminate the text file
+							file_id->read_data.push_back('\0');
+
+							skip_meta_entry = true;
+
+							// Parse the Metadata records contained in this file. Entries here link
+							// to the download through their 'filename'. Entries with the same 'id'
+							// are merged as entries in a Metadata struct
+							vector<Metadata* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
+
+							for (Metadata* tarm : tar_meta) {
+								// Copy the 'train', 'test', 'validate' setting from the 'archive' data entry
+								tarm->type = m->type;
+
+								for (MetadataEntry* tar_entry : tarm->entries) {
+									// Assign the downloaded data
+									ReadRequest* tar_data = responses[md5(tar_entry->filename)];
+
+									if (tar_data != NULL && tar_data->read_data.size() > 0) {
+
+										// We found the download for a piece of metadata
+										if (tar_entry->value_type == METADATA_VALUE_TYPE_IMAGE) {
+											tar_entry->image_data = tar_data->read_data;
+
+										} else if (tar_entry->value_type == METADATA_VALUE_TYPE_RAW) {
+											if (tar_entry->dtype == "uint8")
+												tar_entry->uint8_raw_data = tar_data->read_data;
+											else if (tar_entry->dtype == "float") {
+
+												unsigned int rsize = tar_data->read_data.size() / 4;
+												if (rsize * 4 != tar_data->read_data.size()) {
+													WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
+												}
+
+												for (unsigned int ridx = 0; ridx < rsize; ridx++) {
+													tar_entry->float_raw_data.push_back(((float *)&tar_data->read_data)[ridx]);								
+												}
+											} else {
+												WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + tar_entry->dtype).c_str());
+											}
+										}
+									} else {
+										WriteErrorLog(string(tar_entry->filename + " was not found inside TAR").c_str());
+									}
+								}
+							}
+
+							// Copy data to new vector
+							meta_data_unpacked.insert(meta_data_unpacked.end(), tar_meta.begin(), tar_meta.end());
+
+							// We dont need to safe this download
+							delete file_id;
+
+							archive_read_close(ar);
+							archive_read_free(ar);
+
 						} else {
 							WriteErrorLog(string("Encountered download for unsupported source METADATA_VALUE_TYPE: " + entry->value_type).c_str());
 							return -1;
@@ -351,18 +475,24 @@ int StartExport(map<string,string> options) {
 					}
 				}
 			}	// for (MetaDataEntry* entry : m->entries)
+
+			if (!skip_meta_entry)
+				meta_data_unpacked.push_back(m);
+
 		}	// for (Metadata* m : meta_data)
 
-		bool is_valid = p_writer->ValidateData(meta_data);
+		meta_data.clear();
+
+		bool is_valid = p_writer->ValidateData(meta_data_unpacked);
 		if (!is_valid) {
 			WriteErrorLog(string("DataWriter returned false on ValidateData").c_str());
 			return -1;
 		}
 
-		int to_write = meta_data.size();
+		int to_write = meta_data_unpacked.size();
 		int cur_write = 0;
 
-		for (Metadata* m : meta_data) {
+		for (Metadata* m : meta_data_unpacked) {
 
 			if (time(NULL) != seconds) {
 				DisplayProgressBar(cur_write / (float)to_write, cur_write, to_write);
@@ -389,11 +519,11 @@ int StartExport(map<string,string> options) {
 			delete kv.second;
 		}
 
-		// Flush any other data from memory to disk
-		p_writer->Finalize();
-
 		responses.clear();
 	}
+
+	// Call finalize on the writer function
+	p_writer->Finalize();
 
 	return 0;
 }

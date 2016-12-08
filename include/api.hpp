@@ -1,7 +1,12 @@
 #ifndef _API_HPP
 #define _API_HPP
 
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+
 using namespace std;
+using namespace rapidjson;
 
 #define API_VERSION "1"
 #define CLI_VERSION "1"
@@ -13,6 +18,7 @@ using namespace std;
 
 #define METADATA_VALUE_TYPE_IMAGE	"image"
 #define METADATA_VALUE_TYPE_RAW		"raw"
+#define METADATA_VALUE_TYPE_ARCHIVE	"archive"
 #define METADATA_VALUE_TYPE_LABEL	"label"
 #define METADATA_VALUE_TYPE_NUMERIC	"numeric"
 
@@ -24,6 +30,8 @@ using namespace std;
 #define METADATA_VALIDATE			"validate"
 
 struct MetadataEntry{
+
+	int id;
 
 	string meta_type;
 	string value_type;
@@ -66,6 +74,8 @@ struct Metadata{
 int InitializeApi();
 int GetTotalDatasetSize(map<string,string> options);
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
-vector<Metadata* > ParseFeed(const char * feed);
+vector<Metadata* > ParseFeed(const char* feed);
+vector<Metadata* > ParseTarFeed(const char* feed);
+Metadata* ParseDataEntry(const Value& entryObj, Metadata* meta_output);
 
 #endif

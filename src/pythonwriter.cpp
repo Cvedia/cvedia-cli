@@ -24,7 +24,6 @@ using namespace std;
 #include "Python.h"
 #include "numpy/arrayobject.h"
 
-#include "example.pb.h"
 #include "cvedia.hpp"
 #include "api.hpp"
 #include "pythonwriter.hpp"
@@ -193,6 +192,17 @@ string PythonWriter::PrepareData(Metadata* meta) {
 
 int PythonWriter::Finalize() {
 
+	// Call the finalize function of our python script
+	PyObject* rslt = PyObject_CallObject(pFinalFn, NULL);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return -1;
+	} else {
+		Py_XDECREF(rslt);
+		Py_XDECREF(pFinalFn);
+	}
+
 	return 0;
 }
 
@@ -300,7 +310,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 		else if (e->meta_type == METADATA_TYPE_GROUND)
 			PyList_Append(pyListGround, meta_dict);
 		else {
-			WriteErrorLog("Unsupported meta_type encountered");
+			WriteErrorLog(string("Unsupported meta_type encountered: " + e->meta_type).c_str());
 			return -1;			
 		}
 	

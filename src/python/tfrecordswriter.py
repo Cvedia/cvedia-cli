@@ -12,6 +12,19 @@ def _int64_feature(value):
 def _bytes_feature(value):
 	return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
+def load_module():
+
+	mod = {'module_name': 'TFRecords'}
+
+	param = [
+		{'required': false, 'option': 'tfrecords-entries-per-shard', 'example': "  --tfrecords-entries-per-shard <num>", 'description': "Number of entries per shard. Set to 0 to disable sharding (default: 0)."},
+		{'required': false, 'option': 'tfrecords-max-shard-size', 'example': "  --tfrecords-max-shard-size <bytes>", 'description': "Maximum size of a single shard. Once this limit is reach additiona shards are created (default: 0)."}
+		]
+
+	mod['param'] = param
+
+	return mod
+
 def initialize(options):
 	global writer
 
@@ -42,14 +55,17 @@ def write_data(entry, source, ground):
 	gnd = ground[0]
 
 	record = {}
-
+#	print(gnd)
 	# Check the passed Source data and convert accordingly
 	if src['value_type'] in ['image', 'raw']:
 
 		# These apply to all image/raw types
-		record['source_depth'] = _int64_feature(3)
-		record['source_width'] = _int64_feature(64)
-		record['source_height'] = _int64_feature(64)
+		if 'channels' in src.values():
+			record['source_depth'] = _int64_feature(src['channels'])
+		if 'width' in src.values():
+			record['source_width'] = _int64_feature(src['width'])
+		if 'height' in src.values():
+			record['source_height'] = _int64_feature(src['height'])
 
 		if src['value_type'] == 'image':
 			record['data'] = _bytes_feature(src['imagedata'].tobytes())
@@ -63,9 +79,12 @@ def write_data(entry, source, ground):
 	if gnd['value_type'] in ['image', 'raw']:
 
 		# These apply to all image/raw types
-		record['ground_depth'] = _int64_feature(3)
-		record['ground_width'] = _int64_feature(64)
-		record['ground_height'] = _int64_feature(64)
+		if 'channels' in gnd.values():
+			record['ground_depth'] = _int64_feature(gnd['channels'])
+		if 'width' in gnd.values():
+			record['ground_width'] = _int64_feature(gnd['width'])
+		if 'height' in gnd.values():
+			record['ground_height'] = _int64_feature(gnd['height'])
 	
 		if gnd['value_type'] == 'image':
 			record['label'] = _bytes_feature(gnd['imagedata'].tobytes())
@@ -92,3 +111,4 @@ def write_data(entry, source, ground):
 
 def finalize():
 	print("Script finalized")
+	return True
