@@ -1,7 +1,13 @@
-import sys
-import numpy as np
+# Skip loading all libraries when just getting the module's arguments
+if __name__ != "check_module":
+	import sys
+	import numpy as np
 
-import tensorflow as tf
+	import tensorflow as tf
+else:
+	# Check if tensorflow exists on the system
+	import imp
+	imp.find_module('tensorflow')
 
 def _float_feature(value):
 	return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
@@ -17,11 +23,11 @@ def load_module():
 	mod = {'module_name': 'TFRecords'}
 
 	param = [
-		{'required': false, 'option': 'tfrecords-entries-per-shard', 'example': "  --tfrecords-entries-per-shard <num>", 'description': "Number of entries per shard. Set to 0 to disable sharding (default: 0)."},
-		{'required': false, 'option': 'tfrecords-max-shard-size', 'example': "  --tfrecords-max-shard-size <bytes>", 'description': "Maximum size of a single shard. Once this limit is reach additiona shards are created (default: 0)."}
-		]
+				{'required': False, 'option': 'tfrecords-entries-per-shard', 'example': "  --tfrecords-entries-per-shard <num>", 'description': "Number of entries per shard. Set to 0 to disable sharding (default: 0)."},
+				{'required': False, 'option': 'tfrecords-max-shard-size', 'example': "  --tfrecords-max-shard-size <bytes>", 'description': "Maximum size of a single shard. Once this limit is reached additional shards are created (default: 0)."}
+			]
 
-	mod['param'] = param
+	mod['params'] = param
 
 	return mod
 

@@ -45,13 +45,15 @@ using namespace rapidjson;
 #include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "caffeimagedata.hpp"
-
+#include "pythonmodules.hpp"
 
 // Initialize global variables
 int gDebug 		= 1;
 
 int gBatchSize 	= 256;
 int gDownloadThreads = 100;
+
+vector<export_module> gModules;
 
 int lTermWidth = 80;
 
@@ -72,39 +74,77 @@ enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREA
 int main(int argc, char* argv[]) {
 
 	vector<string> supported_output;
+	vector<option::Descriptor> module_vec;
+
 	supported_output.push_back("CSV");
 	supported_output.push_back("CaffeImageData");
 #ifdef HAVE_HDF5
 	supported_output.push_back("HDF5");
 #endif
-#ifdef HAVE_TFRECORDS
 #ifdef HAVE_PYTHON
-	supported_output.push_back("TFRecords");
-#endif
+
+	PythonModules::LoadPythonCore();
+
+	gModules = PythonModules::ListModules("./python/");
+
+	for (export_module module : gModules) {
+
+		// Add module to the list of supported output modules
+		supported_output.push_back(module.module_name);
+
+		string str_mod_help = string("\n\n\t##### " + module.module_name + " Module Options #####\n");
+		char* mod_help = new char[str_mod_help.length()+1]();
+		strcpy(mod_help, str_mod_help.c_str());
+
+		module_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, mod_help});
+
+		for (export_module_param param : module.module_params) {
+
+			param.help = string(param.example + "  \t" + param.description);
+
+			// Convert the string() object to const char*. Converting them to c_str()
+			// directly into the Descriptor struct does not guarantuee their continued existence.
+			// These pointers are not freed
+			char* option = new char[param.option.length()+1]();
+			strcpy(option, param.option.c_str());
+			char* help = new char[param.help.length()+1]();
+			strcpy(help, param.help.c_str());
+
+			module_vec.push_back({UNKNOWN,    	0,"", option, (param.required == true ? option::Arg::Required : option::Arg::None), help });
+		}
+	}
+
 #endif
 
 	string output_string = JoinStringVector(supported_output, ",");
 
-	option::Descriptor usage[] =
-	{
-		{UNKNOWN, 	0,"" , ""    ,option::Arg::None, string("CVEDIA-CLI v." + gVersion + " API Compatibility v." + gAPIVersion + "\n\nUSAGE: cvedia [options]\n\nOptions:").c_str() },
-		{HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
-		{JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" },
-		{DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" },
-		{NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" },
-		{OUTPUT,   	0,"o", "output",option::Arg::Required, string("  --output=<module>, -o <module>  \tSupported modules are " + output_string + ". (default: CSV)").c_str() },
-		{BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." },
-		{THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." },
-		{API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  },
-		{IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore the images as files on disk instead of inside the output format. This option might be overridden by the output module" },
-		{IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." },
-#ifdef HAVE_TFRECORDS
-		{UNKNOWN, 	0,"" , ""    ,option::Arg::None, "\n             ##### TFRecords Module Options #####"},
-		{MOD_TFRECORDS_PER_SHARD,   0,"", "tfrecords-entries-per-shard",option::Arg::None, "  --tfrecords-entries-per-shard  \tNumber of entries per shard. Set to 0 to disable sharding (default: 0)." },
-#endif
-		{UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e -n test_export --api=http://api.cvedia.com/\n" },
-		{0,0,0,0,0,0}
-	};
+	vector<option::Descriptor> usage_vec;
+
+	string version = string("CVEDIA-CLI v." + gVersion + " API Compatibility v." + gAPIVersion + "\n\nUSAGE: cvedia [options]\n\nOptions:");
+	string strmods = string("  --output=<module>, -o <module>  \tSupported modules are " + output_string + ". (default: CSV)");
+
+	usage_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, version.c_str() });
+	usage_vec.push_back({HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." });
+	usage_vec.push_back({JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" });
+	usage_vec.push_back({DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" });
+	usage_vec.push_back({NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" });
+	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
+	usage_vec.push_back({BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." });
+	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." });
+	usage_vec.push_back({API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  });
+	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore the images as files on disk instead of inside the output format. This option might be overridden by the output module" });
+	usage_vec.push_back({IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." });
+
+	// Insert the python modules with their options
+	for (option::Descriptor desc : module_vec) {
+		// Have to manually insert them, .insert() is not able to assign the structure
+		usage_vec.push_back({(unsigned int)usage_vec.size(), desc.type, desc.shortopt, desc.longopt, desc.check_arg, desc.help});
+	}
+
+	usage_vec.push_back({UNKNOWN, 	0,"" ,  ""   ,option::Arg::None, "\nExamples:\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e\n\tcvedia -j d41d8cd98f00b204e9800998ecf8427e -n test_export --api=http://api.cvedia.com/\n" });
+	usage_vec.push_back({0,0,0,0,0,0});
+
+	option::Descriptor *usage = &usage_vec[0]; 
 
 	struct winsize w;
 	
@@ -329,149 +369,105 @@ int StartExport(map<string,string> options) {
 				if (entry->url != "") {	// Did we download something ?
 					ReadRequest* req = responses[md5(entry->url)];
 
-					if (req != NULL && req->read_data.size() > 0) {
+					if (entry->value_type == METADATA_VALUE_TYPE_IMAGE || entry->value_type == METADATA_VALUE_TYPE_RAW) {
+						int r = ReadRequestToMetadataEntry(req, entry);
 
-						// We found the download for a piece of metadata
-						if (entry->value_type == METADATA_VALUE_TYPE_IMAGE) {
-							entry->image_data = req->read_data;
+						if (r == -1)
+							return -1;
 
-						} else if (entry->value_type == METADATA_VALUE_TYPE_RAW) {
-							if (entry->dtype == "uint8")
-								entry->uint8_raw_data = req->read_data;
-							else if (entry->dtype == "float") {
+					} else if (entry->value_type == METADATA_VALUE_TYPE_ARCHIVE) {
+						// Archive found, start unpacking
+						struct archive_entry* a_entry;
+						struct archive* ar = archive_read_new();
+						archive_read_support_filter_all(ar);
+						archive_read_support_format_all(ar);
 
-								unsigned int rsize = req->read_data.size() / 4;
-								if (rsize * 4 != req->read_data.size()) {
-									WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
-								}
-
-								for (unsigned int ridx = 0; ridx < rsize; ridx++) {
-									entry->float_raw_data.push_back(((float *)&req->read_data)[ridx]);								
-								}
-							} else {
-								WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + entry->dtype).c_str());
-							}
-
-						} else if (entry->value_type == METADATA_VALUE_TYPE_ARCHIVE) {
-							// Archive found, start unpacking
-							struct archive_entry* a_entry;
-							struct archive* ar = archive_read_new();
-							archive_read_support_filter_all(ar);
-							archive_read_support_format_all(ar);
-
-							int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
-							if (r == ARCHIVE_FATAL) {
-								WriteErrorLog(string("Failed to open archive at: " + entry->url).c_str());
-								return -1;
-							}
-
-							// Save the file_id.diz for the end so we know all images have been loaded
-							struct ReadRequest* file_id = NULL;
-
-							while (archive_read_next_header(ar, &a_entry) == ARCHIVE_OK) {
-	
-								const uint8_t* buff;
-								size_t size;
-								off_t offset;
-
-								string file_name(archive_entry_pathname(a_entry));
-
-								struct ReadRequest* new_req = new ReadRequest();
-
-								new_req->url = entry->url;
-								new_req->id = "";
-								new_req->status = 200;
-
-								int file_size = 0;
-
-								for (;;) {
-									r = archive_read_data_block(ar, (const void **)&buff, &size, &offset);
-
-									if (r == ARCHIVE_EOF) {
-										// Store file as if we got it from cURL
-										if (file_name == "file_id.diz") {
-
-											file_id = new_req;
-
-										} else {
-											responses[md5(file_name)] = new_req;
-										}
-										break;
-									}
-
-									// Insert data in the request buffer
-									new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
-									file_size += size;
-								}
-							}
-
-							if (file_id == NULL) {
-								WriteErrorLog(string(entry->url + " did not contain a file_id.diz").c_str());
-								return -1;								
-							}
-
-							// Make sure we NULL terminate the text file
-							file_id->read_data.push_back('\0');
-
-							skip_meta_entry = true;
-
-							// Parse the Metadata records contained in this file. Entries here link
-							// to the download through their 'filename'. Entries with the same 'id'
-							// are merged as entries in a Metadata struct
-							vector<Metadata* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
-
-							for (Metadata* tarm : tar_meta) {
-								// Copy the 'train', 'test', 'validate' setting from the 'archive' data entry
-								tarm->type = m->type;
-
-								for (MetadataEntry* tar_entry : tarm->entries) {
-									// Assign the downloaded data
-									ReadRequest* tar_data = responses[md5(tar_entry->filename)];
-
-									if (tar_data != NULL && tar_data->read_data.size() > 0) {
-
-										// We found the download for a piece of metadata
-										if (tar_entry->value_type == METADATA_VALUE_TYPE_IMAGE) {
-											tar_entry->image_data = tar_data->read_data;
-
-										} else if (tar_entry->value_type == METADATA_VALUE_TYPE_RAW) {
-											if (tar_entry->dtype == "uint8")
-												tar_entry->uint8_raw_data = tar_data->read_data;
-											else if (tar_entry->dtype == "float") {
-
-												unsigned int rsize = tar_data->read_data.size() / 4;
-												if (rsize * 4 != tar_data->read_data.size()) {
-													WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
-												}
-
-												for (unsigned int ridx = 0; ridx < rsize; ridx++) {
-													tar_entry->float_raw_data.push_back(((float *)&tar_data->read_data)[ridx]);								
-												}
-											} else {
-												WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + tar_entry->dtype).c_str());
-											}
-										}
-									} else {
-										WriteErrorLog(string(tar_entry->filename + " was not found inside TAR").c_str());
-									}
-								}
-							}
-
-							// Copy data to new vector
-							meta_data_unpacked.insert(meta_data_unpacked.end(), tar_meta.begin(), tar_meta.end());
-
-							// We dont need to safe this download
-							delete file_id;
-
-							archive_read_close(ar);
-							archive_read_free(ar);
-
-						} else {
-							WriteErrorLog(string("Encountered download for unsupported source METADATA_VALUE_TYPE: " + entry->value_type).c_str());
+						int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
+						if (r == ARCHIVE_FATAL) {
+							WriteErrorLog(string("Failed to open archive at: " + entry->url).c_str());
 							return -1;
 						}
+
+						// Save the file_id.diz for the end so we know all images have been loaded
+						struct ReadRequest* file_id = NULL;
+
+						// Go over all the files inside the archive
+						while (archive_read_next_header(ar, &a_entry) == ARCHIVE_OK) {
+
+							const uint8_t* buff;
+							size_t size;
+							off_t offset;
+
+							string file_name(archive_entry_pathname(a_entry));
+
+							struct ReadRequest* new_req = new ReadRequest();
+
+							new_req->url = entry->url;
+							new_req->id = "";
+							new_req->status = 200;
+
+							// Read all data for the entry retrieved aboved
+							for (;;) {
+								r = archive_read_data_block(ar, (const void **)&buff, &size, &offset);
+
+								if (r == ARCHIVE_EOF) {
+									if (file_name == "file_id.diz") {
+										// Save this for later, we still need to extract more images
+										file_id = new_req;
+
+									} else {
+										// Store file as if we got it from cURL
+										responses[md5(file_name)] = new_req;
+									}
+									break;
+								}
+
+								// Insert data in the request buffer
+								new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
+							}
+						}
+
+						if (file_id == NULL) {
+							WriteErrorLog(string(entry->url + " did not contain a file_id.diz").c_str());
+							return -1;
+						}
+
+						// Make sure we NULL terminate the text file
+						file_id->read_data.push_back('\0');
+
+						skip_meta_entry = true;
+
+						// Parse the Metadata records contained in this file. Entries here link
+						// to the download through their 'filename'. Entries with the same 'id'
+						// are merged as entries in a Metadata struct
+						vector<Metadata* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
+
+						for (Metadata* tarm : tar_meta) {
+							// Copy the 'train', 'test', 'validate' setting from the 'archive' data entry
+							tarm->type = m->type;
+
+							for (MetadataEntry* tar_entry : tarm->entries) {
+								// Assign the downloaded data
+								ReadRequest* tar_data = responses[md5(tar_entry->filename)];
+
+								int r = ReadRequestToMetadataEntry(tar_data, tar_entry);
+								if (r == -1)	// Faile
+									return -1;
+							}
+						}
+
+						// Copy data to new vector
+						meta_data_unpacked.insert(meta_data_unpacked.end(), tar_meta.begin(), tar_meta.end());
+
+						// We dont need to safe this download
+						delete file_id;
+
+						archive_read_close(ar);
+						archive_read_free(ar);
+
 					} else {
-						WriteDebugLog(string("No download results for: " + entry->url).c_str());
+						WriteErrorLog(string("Encountered download for unsupported source METADATA_VALUE_TYPE: " + entry->value_type).c_str());
+						return -1;
 					}
 				}
 			}	// for (MetaDataEntry* entry : m->entries)
@@ -524,6 +520,40 @@ int StartExport(map<string,string> options) {
 
 	// Call finalize on the writer function
 	p_writer->Finalize();
+
+	return 0;
+}
+
+int ReadRequestToMetadataEntry(ReadRequest* req, MetadataEntry* entry) {
+
+	if (req != NULL && req->read_data.size() > 0) {
+
+		// We found the download for a piece of metadata
+		if (entry->value_type == METADATA_VALUE_TYPE_IMAGE) {
+			entry->image_data = req->read_data;
+
+		} else if (entry->value_type == METADATA_VALUE_TYPE_RAW) {
+			if (entry->dtype == "uint8")
+				entry->uint8_raw_data = req->read_data;
+			else if (entry->dtype == "float") {
+
+				unsigned int rsize = req->read_data.size() / 4;
+				if (rsize * 4 != req->read_data.size()) {
+					WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
+				}
+
+				for (unsigned int ridx = 0; ridx < rsize; ridx++) {
+					entry->float_raw_data.push_back(((float *)&req->read_data)[ridx]);								
+				}
+			} else {
+				WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + entry->dtype).c_str());
+				return -1;
+			}
+		}
+	} else {
+		WriteErrorLog(string(entry->filename + " was not downloaded?").c_str());
+		return -1;
+	}
 
 	return 0;
 }

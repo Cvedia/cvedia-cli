@@ -1,6 +1,10 @@
 #ifndef _CURLREADER_HPP
 #define _CURLREADER_HPP
 
+#include <mutex>
+#include <thread>
+#include <curl/curl.h>
+
 using namespace std;
 
 #include "datareader.hpp"

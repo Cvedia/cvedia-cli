@@ -1,31 +1,13 @@
 #ifndef _FUNCTIONS_HPP
 #define _FUNCTIONS_HPP
 
-string ReplaceString(string subject, const string& search, const string& replace) {
-	
-	size_t pos = 0;
+#include <iostream>
 
-	while ((pos = subject.find(search, pos)) != string::npos) {
-	     subject.replace(pos, search.length(), replace);
-	     pos += replace.length();
-	}
+using namespace std;
 
-	return subject;
-}
-
-void Split(const string &s, char delim, vector<string> &elems) {
-    stringstream ss;
-    ss.str(s);
-    string item;
-    while (getline(ss, item, delim)) {
-        elems.push_back(item);
-    }
-}
-
-vector<string> Split(const string &s, char delim) {
-    vector<string> elems;
-    Split(s, delim, elems);
-    return elems;
-}
+string ReplaceString(string subject, const string& search, const string& replace);
+void Split(const string& s, char delim, vector<string>& elems);
+vector<string> Split(const string& s, char delim);
+bool hasEnding(string const& fullString, string const& ending);
 
 #endif

@@ -75,7 +75,7 @@ int PythonWriter::Initialize() {
 	PySys_SetArgvEx(0, NULL, 0);
 
 	ifstream script_file("python/tfrecordswriter.py");
-	if (script_file == NULL) {
+	if (!script_file.is_open()) {
         WriteErrorLog(string("Error reading script file python/tfrecordswriter.py").c_str());
 		return -1;
 	}
