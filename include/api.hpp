@@ -12,9 +12,9 @@ using namespace rapidjson;
 #define CLI_VERSION "1"
 
 // API Calls defined
-#define API_FUNCTION_HELLO			"welcome.php"
-#define API_FUNCTION_COUNT			"count.php"
-#define API_FUNCTION_FETCH_BATCH	"fetch.php?size=$BATCHSIZE&offset=$BATCHID"
+#define API_FUNCTION_HELLO			"welcome"
+#define API_FUNCTION_COUNT			"count"
+#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$BATCHID"
 
 #define METADATA_VALUE_TYPE_IMAGE	"image"
 #define METADATA_VALUE_TYPE_RAW		"raw"

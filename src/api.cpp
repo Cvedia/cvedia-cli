@@ -62,7 +62,7 @@ int InitializeApi() {
 		}
 	}
 
-	WriteDebugLog("Failed to initialize Cvedia API");
+	WriteDebugLog(string("Failed to initialize Cvedia API (" + api_url + ")").c_str());
 
 	if (req != NULL)
 		delete req;
