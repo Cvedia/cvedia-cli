@@ -38,6 +38,7 @@ using namespace rapidjson;
 #include "md5.hpp"
 #include "api.hpp"
 #include "functions.hpp"
+#include "easylogging++.h"
 #include "optionparser.h"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
@@ -47,6 +48,8 @@ using namespace rapidjson;
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
 
+INITIALIZE_EASYLOGGINGPP
+
 // Initialize global variables
 int gDebug 		= 1;
 
@@ -54,6 +57,8 @@ int gBatchSize 	= 256;
 int gDownloadThreads = 100;
 
 vector<export_module> gModules;
+
+DatasetMetadata* gDatasetMeta;
 
 int lTermWidth = 80;
 
@@ -72,6 +77,8 @@ bool gInterrupted = false;
 enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
 
 int main(int argc, char* argv[]) {
+
+	el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format, "%datetime %level %loc] %msg");
 
 	vector<string> supported_output;
 	vector<option::Descriptor> module_vec;
@@ -208,11 +215,11 @@ int main(int argc, char* argv[]) {
 	// and destroyed continually this is a better approach
 	CURLcode res = curl_global_init(CURL_GLOBAL_NOTHING);
 	if (res != 0) {
-		cout << "curl_global_init(): " << curl_easy_strerror(res) << endl;
+		LOG(ERROR) << "curl_global_init(): " << curl_easy_strerror(res);
 	}
 	
 	if (gBaseDir == "")
-		gBaseDir = "./";
+		gBaseDir = ".";
 	else
 		gBaseDir += "/";
 
@@ -222,7 +229,7 @@ int main(int argc, char* argv[]) {
 
 	int dir_err = mkdir(mod_options["working_dir"].c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
-		WriteErrorLog(string("Could not create directory: " + mod_options["working_dir"]).c_str());
+		LOG(ERROR) << "Could not create directory: " << mod_options["working_dir"];
 		return -1;
 	}
 
@@ -248,9 +255,9 @@ void SigHandler(int s) {
 	if (gInterrupted == false) {
 		gInterrupted = true;
 
-		WriteLog("Ctrl-C received. Will finish current batch before exiting. Press Ctrl-C again to terminate immediately.");
+		cout << "Ctrl-C received. Will finish current batch before exiting. Press Ctrl-C again to terminate immediately.";
 	} else {
-		WriteLog("Terminating immediately.");
+		cout << "Terminating immediately.";
 		exit(1);
 	}
 }
@@ -258,10 +265,6 @@ void SigHandler(int s) {
 int StartExport(map<string,string> options) {
 
 	time_t seconds;
-
-	options["create_test_file"] = "1";
-	options["create_train_file"] = "1";
-	options["create_validate_file"] = "1";
 
 	CurlReader *p_reader = new CurlReader();
 
@@ -280,18 +283,27 @@ int StartExport(map<string,string> options) {
 		p_writer = new PythonWriter(gExportName, options);
 #endif
 	} else {
-		WriteErrorLog(string("Unsupported output module specified: " + gOutputFormat).c_str());
-	}
-
-	if (p_writer->Initialize() != 0) {
-		WriteErrorLog(string("Failed to initialize " + gOutputFormat).c_str());
-		return -1;
+		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
 	}
 
 	p_reader->SetNumThreads(gDownloadThreads);
 
-	int batch_size = GetTotalDatasetSize(options);
-	WriteDebugLog(string("Total expected dataset size is " + to_string(batch_size)).c_str());
+	gDatasetMeta = GetDatasetMetadata(gJobID);
+	if (gDatasetMeta == NULL) {
+		LOG(ERROR) << "Failed to fetch metadata for dataset";
+		return -1;		
+	}
+
+	int batch_size = gDatasetMeta->count;
+
+	// Initialize the writer module. This can fail in many ways including specifying
+	// a non-supported combination of output fields
+	if (p_writer->Initialize(gDatasetMeta) != 0) {
+		LOG(ERROR) << "Failed to initialize " << gOutputFormat;
+		return -1;
+	}
+
+	LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
 
 	// Fetch basic stats on export
 	int num_batches = ceil(batch_size / (float)gBatchSize);
@@ -303,11 +315,11 @@ int StartExport(map<string,string> options) {
 		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 		if (meta_data.size() == 0) {
-			WriteDebugLog(string("No metadata return by API, end of dataset?").c_str());
+			LOG(WARNING) << "No metadata returned by API, end of dataset?";
 			return -1;
 		}
 
-		WriteDebugLog(string("Starting download for batch #" + to_string(batch_idx)).c_str());
+		LOG(INFO) << "Starting download for batch #" << to_string(batch_idx);
 
 		seconds = time(NULL);
 
@@ -346,8 +358,8 @@ int StartExport(map<string,string> options) {
 		// Update stats for last time
 		stats = p_reader->GetStats();
 
-		WriteDebugLog(string("Downloaded " + to_string(stats.bytes_read) + " bytes").c_str());
-		WriteDebugLog("Syncing batch to disk...");
+		LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
+		LOG(INFO) << "Syncing batch to disk...";
 
 		p_reader->ClearStats();
 
@@ -363,6 +375,8 @@ int StartExport(map<string,string> options) {
 			// Find the request for a specific filename
 
 			bool skip_meta_entry = false;
+
+			vector<MetadataEntry* > new_entries;
 
 			for (MetadataEntry* entry : m->entries) {
 
@@ -384,8 +398,12 @@ int StartExport(map<string,string> options) {
 
 						int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
 						if (r == ARCHIVE_FATAL) {
-							WriteErrorLog(string("Failed to open archive at: " + entry->url).c_str());
-							return -1;
+							LOG(ERROR) << "Skipping broken archive at: " << entry->url;
+
+							archive_read_close(ar);
+							archive_read_free(ar);
+
+							continue;
 						}
 
 						// Save the file_id.diz for the end so we know all images have been loaded
@@ -428,7 +446,7 @@ int StartExport(map<string,string> options) {
 						}
 
 						if (file_id == NULL) {
-							WriteErrorLog(string(entry->url + " did not contain a file_id.diz").c_str());
+							LOG(ERROR) << entry->url << " did not contain a file_id.diz";
 							return -1;
 						}
 
@@ -440,24 +458,19 @@ int StartExport(map<string,string> options) {
 						// Parse the Metadata records contained in this file. Entries here link
 						// to the download through their 'filename'. Entries with the same 'id'
 						// are merged as entries in a Metadata struct
-						vector<Metadata* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
+						vector<MetadataEntry* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
 
-						for (Metadata* tarm : tar_meta) {
-							// Copy the 'train', 'test', 'validate' setting from the 'archive' data entry
-							tarm->type = m->type;
+						for (MetadataEntry* tar_entry : tar_meta) {
+							// Assign the downloaded data
+							ReadRequest* tar_data = responses[md5(tar_entry->filename)];
 
-							for (MetadataEntry* tar_entry : tarm->entries) {
-								// Assign the downloaded data
-								ReadRequest* tar_data = responses[md5(tar_entry->filename)];
-
-								int r = ReadRequestToMetadataEntry(tar_data, tar_entry);
-								if (r == -1)	// Faile
-									return -1;
-							}
+							int r = ReadRequestToMetadataEntry(tar_data, tar_entry);
+							if (r == -1)	// Failed
+								return -1;
 						}
 
 						// Copy data to new vector
-						meta_data_unpacked.insert(meta_data_unpacked.end(), tar_meta.begin(), tar_meta.end());
+						new_entries.insert(new_entries.end(), tar_meta.begin(), tar_meta.end());
 
 						// We dont need to safe this download
 						delete file_id;
@@ -466,14 +479,18 @@ int StartExport(map<string,string> options) {
 						archive_read_free(ar);
 
 					} else {
-						WriteErrorLog(string("Encountered download for unsupported source METADATA_VALUE_TYPE: " + entry->value_type).c_str());
+						LOG(ERROR) << "Encountered download for unsupported source METADATA_VALUE_TYPE: " << entry->value_type;
 						return -1;
 					}
 				}
+
+				if (!skip_meta_entry)
+					new_entries.push_back(entry);
+
 			}	// for (MetaDataEntry* entry : m->entries)
 
-			if (!skip_meta_entry)
-				meta_data_unpacked.push_back(m);
+			m->entries = new_entries;
+			meta_data_unpacked.push_back(m);
 
 		}	// for (Metadata* m : meta_data)
 
@@ -481,7 +498,7 @@ int StartExport(map<string,string> options) {
 
 		bool is_valid = p_writer->ValidateData(meta_data_unpacked);
 		if (!is_valid) {
-			WriteErrorLog(string("DataWriter returned false on ValidateData").c_str());
+			LOG(ERROR) << "DataWriter returned false on ValidateData";
 			return -1;
 		}
 
@@ -498,7 +515,7 @@ int StartExport(map<string,string> options) {
 
 			int res = p_writer->WriteData(m);
 			if (res != 0) {
-				WriteErrorLog(string("WriteData returned non zero").c_str());
+				LOG(ERROR) << "WriteData returned non zero";
 				return -1;
 			}
 
@@ -539,19 +556,19 @@ int ReadRequestToMetadataEntry(ReadRequest* req, MetadataEntry* entry) {
 
 				unsigned int rsize = req->read_data.size() / 4;
 				if (rsize * 4 != req->read_data.size()) {
-					WriteDebugLog(string("Raw data with dtype float is not divisible by 4. Is the data in float format?").c_str());
+					LOG(ERROR) << "Raw data with dtype float is not divisible by 4. Is the data in float format?";
 				}
 
 				for (unsigned int ridx = 0; ridx < rsize; ridx++) {
 					entry->float_raw_data.push_back(((float *)&req->read_data)[ridx]);								
 				}
 			} else {
-				WriteErrorLog(string("Unsupported dtype for METADATA_TYPE_RAW: " + entry->dtype).c_str());
+				LOG(ERROR) << "Unsupported dtype for METADATA_TYPE_RAW: " << entry->dtype;
 				return -1;
 			}
 		}
 	} else {
-		WriteErrorLog(string(entry->filename + " was not downloaded?").c_str());
+		LOG(ERROR) << entry->filename + " was not downloaded?";
 		return -1;
 	}
 

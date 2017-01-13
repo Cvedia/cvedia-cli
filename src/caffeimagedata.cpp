@@ -14,6 +14,7 @@
 
 using namespace std;
 
+#include "easylogging++.h"
 #include "config.hpp"
 #include "cvedia.hpp"
 #include "api.hpp"
@@ -22,7 +23,7 @@ using namespace std;
 
 CaffeImageDataWriter::CaffeImageDataWriter(string export_name, map<string, string> options) {
 
-	WriteDebugLog("Initializing CaffeImageDataWriter");
+	LOG(INFO) << "Initializing CaffeImageDataWriter";
 
 	mModuleOptions = options;
 	mExportName = export_name;
@@ -93,7 +94,7 @@ string CaffeImageDataWriter::PrepareData(Metadata* meta) {
 
 		output_line = tmp_line;
 	} else {
-		WriteErrorLog("CaffeImageDataWriter::PrepareData() Missing 'category' field in input");
+		LOG(ERROR) << "CaffeImageDataWriter::PrepareData() Missing 'category' field in input";
 		return "";
 	}
 

@@ -25,6 +25,7 @@ using namespace std;
 #include "Python.h"
 #include "numpy/arrayobject.h"
 
+#include "easylogging++.h"
 #include "functions.hpp"
 #include "cvedia.hpp"
 #include "api.hpp"
@@ -63,23 +64,23 @@ vector<export_module> PythonModules::ListModules(string path) {
 
 		closedir(dir);
 	} else {
-        WriteErrorLog(string("Could not open python module folder at " + path).c_str());
+		LOG(ERROR) << "Could not open python module folder at " << path;
 		return modules;
 	}
 
 	if (python_scripts.size() == 0) {
-        WriteErrorLog(string("No python modules found").c_str());
+		LOG(ERROR) << "No python modules found";
 		return modules;		
 	}
 
 	for (string script_file : python_scripts) {
-		WriteDebugLog(string("Reading module options from python script " + script_file).c_str());
+		LOG(DEBUG) << "Reading module options from python script " << script_file;
 
 		export_module module;
 
 		ifstream script_stream(script_file);
 		if (!script_stream.is_open()) {
-	        WriteErrorLog(string("Error reading script file " + script_file).c_str());
+			LOG(ERROR) << "Error reading script file " << script_file;
 			continue;
 		}
 
@@ -90,7 +91,7 @@ vector<export_module> PythonModules::ListModules(string path) {
 		PyObject* pCompiledFn = Py_CompileString(script_data.c_str() , "" , Py_file_input);
 		if (pCompiledFn == NULL) {
 			PyErr_PrintEx(0);
-	        WriteErrorLog("Error running Py_CompileString");
+	        LOG(ERROR) << "Error running Py_CompileString";
 	        continue;
 		}
 
@@ -98,7 +99,7 @@ vector<export_module> PythonModules::ListModules(string path) {
 		if (pModule == NULL) {
 			if (gDebug == 1) {
 				PyErr_PrintEx(0);
-		        WriteErrorLog("Python error");
+		        LOG(ERROR) << "Python error";
 	        }
 	        continue;
 		}
@@ -110,7 +111,7 @@ vector<export_module> PythonModules::ListModules(string path) {
 		p_loadmodule = PyObject_GetAttrString(pModule ,"load_module");
 		if (p_loadmodule == NULL) {
 			PyErr_PrintEx(0);
-	        WriteErrorLog("Could not find 'initialize' def in Python script");
+	        LOG(ERROR) << "Could not find 'initialize' def in Python script";
 	        continue;
 		}
 
@@ -124,7 +125,7 @@ vector<export_module> PythonModules::ListModules(string path) {
 
 		if (!PyDict_Check(dict)) {
 			Py_XDECREF(dict);
-			WriteErrorLog("Call to 'load_module' did not return a pyton dictionary");
+			LOG(ERROR) << "Call to 'load_module' did not return a pyton dictionary";
 			continue;
 		}
 

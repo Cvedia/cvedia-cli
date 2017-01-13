@@ -24,12 +24,13 @@
 
 using namespace std;
 
+#include "easylogging++.h"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 
 CurlReader::CurlReader() {
 
-	WriteDebugLog("Initializing CurlReader");
+	LOG(INFO) << "Initializing CurlReader";
 
 	mThreadsMax = 100;
 
@@ -68,7 +69,7 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 
 		return req;
 	} else {
-		WriteErrorLog(string("Could not communicate with API: " + url).c_str());
+		LOG(ERROR) << "Could not communicate with API: " << url;
 	}
 
 	// Fail
@@ -82,7 +83,7 @@ void CurlReader::QueueUrl(string id, string url) {
 	ReadRequest* request = new ReadRequest;
 
 	if (id == "") {
-		WriteErrorLog("Empty id passed to QueueUrl");
+		LOG(ERROR) << "Empty id passed to QueueUrl";
 		return;
 	}
 
@@ -123,7 +124,7 @@ void CurlReader::ClearStats() {
 
 void CurlReader::SetNumThreads(int num_threads) {
 
-	WriteDebugLog(string("Number of download threads set to " + to_string(num_threads)).c_str());
+	LOG(INFO) << "Number of download threads set to " << to_string(num_threads);
 	mThreadsMax = num_threads;
 }
 
@@ -212,7 +213,7 @@ void CurlReader::WorkerThread() {
 	
 		if (mc != CURLM_OK)
 		{
-			fprintf(stderr, "curl_multi_fdset() failed, code %d.\n", mc);
+			LOG(ERROR) << "curl_multi_fdset() failed, code " << to_string(mc);
 			break;
 		}
 		
@@ -251,7 +252,7 @@ void CurlReader::WorkerThread() {
 			} else {
 				req->status = -1;
 
-				cout << "Error downloading file" << endl;
+				LOG(ERROR) << "Error downloading file" << endl;
 				mCurlStats.num_reads_error++;
 			}
 			

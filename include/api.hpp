@@ -13,13 +13,13 @@ using namespace rapidjson;
 
 // API Calls defined
 #define API_FUNCTION_HELLO			"welcome"
-#define API_FUNCTION_COUNT			"count"
+#define API_FUNCTION_COUNT			"meta"
 #define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$BATCHID"
 
 #define METADATA_VALUE_TYPE_IMAGE	"image"
 #define METADATA_VALUE_TYPE_RAW		"raw"
 #define METADATA_VALUE_TYPE_ARCHIVE	"archive"
-#define METADATA_VALUE_TYPE_LABEL	"label"
+#define METADATA_VALUE_TYPE_STRING	"string"
 #define METADATA_VALUE_TYPE_NUMERIC	"numeric"
 
 #define METADATA_TYPE_SOURCE		"source"
@@ -29,9 +29,32 @@ using namespace rapidjson;
 #define METADATA_TEST				"test"
 #define METADATA_VALIDATE			"validate"
 
-struct MetadataEntry{
+struct DatasetMapping {
+	string name;
+	int id;
+	int field_id;
+};
+
+struct DatasetSet {
+	string set_name;
+	float set_perc;
+};
+
+struct DatasetMetadata {
+
+	int count;
+
+	vector<DatasetMapping* > mapping_by_id;
+	map<string, DatasetMapping* > mapping_by_name;
+	map<int, DatasetMapping* > mapping_by_field_id;
+
+	vector<DatasetSet> sets;
+};
+
+struct MetadataEntry {
 
 	int id;
+	int field_id;
 
 	string meta_type;
 	string value_type;
@@ -41,13 +64,15 @@ struct MetadataEntry{
 	string url;
 	string dtype;
 
+	string field_name;
+
 	int int_value;
 	float float_value;
 
 	vector<vector<float>> float_array; 
 	vector<vector<int>> int_array; 
 
-	vector<string> label;
+	vector<string> string_value;
 
 	// This metadata applies to all image or raw data vectors
 	int data_channels;
@@ -72,10 +97,10 @@ struct Metadata{
 #include "datawriter.hpp"
 
 int InitializeApi();
-int GetTotalDatasetSize(map<string,string> options);
+DatasetMetadata* GetDatasetMetadata(string job_id);
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
 vector<Metadata* > ParseFeed(const char* feed);
-vector<Metadata* > ParseTarFeed(const char* feed);
+vector<MetadataEntry* > ParseTarFeed(const char* feed);
 Metadata* ParseDataEntry(const Value& entryObj, Metadata* meta_output);
 
 #endif

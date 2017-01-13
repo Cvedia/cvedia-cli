@@ -53,10 +53,10 @@ AC_CHECK_HEADER([${NUMPY_INCLUDE_DIR}/numpy/arrayobject.h], [NUMPY_HEADER=yes],
 
 AC_SUBST(NUMPY_HEADER)
 
-AC_ARG_WITH([hdf5], 
+AC_ARG_WITH([hdf5_cpp], 
   AS_HELP_STRING([--without-hdf5], [build without HDF5 (default: no)]))
 
-AC_SEARCH_LIBS([H5T_open], [hdf5],
+AC_SEARCH_LIBS([H5Topen], [hdf5_cpp],
 	if test x"$with_hdf5" != x"no"; then
 		[AC_DEFINE(HAVE_HDF5,1,[define if HDF5 is supported.])  
 		with_hdf5=yes

@@ -23,7 +23,7 @@ public:
 	WriterStats GetStats();
 	void ClearStats();
 	
-	virtual int Initialize();
+	virtual int Initialize(DatasetMetadata* dataset_meta);
 	virtual int Finalize();
 
 	string mBasePath;

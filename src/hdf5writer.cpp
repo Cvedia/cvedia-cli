@@ -72,7 +72,7 @@ void Hdf5Writer::ClearStats() {
 	mCsvStats = {};
 }
 
-int Hdf5Writer::Initialize() {
+int Hdf5Writer::Initialize(DatasetMetadata* dataset_meta) {
 
 	// Clear the stats structure
 	mCsvStats = {};
