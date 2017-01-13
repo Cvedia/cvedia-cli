@@ -24,13 +24,14 @@ using namespace std;
 #include "Python.h"
 #include "numpy/arrayobject.h"
 
+#include "easylogging++.h"
 #include "cvedia.hpp"
 #include "api.hpp"
 #include "pythonwriter.hpp"
 
 PythonWriter::PythonWriter(string export_name, map<string, string> options) {
 
-	WriteDebugLog("Initializing PythonWriter");
+	LOG(INFO) << "Initializing PythonWriter";
 
 	mModuleOptions = options;
 	mExportName = export_name;
@@ -62,7 +63,7 @@ void PythonWriter::ClearStats() {
 	mCsvStats = {};
 }
 
-int PythonWriter::Initialize() {
+int PythonWriter::Initialize(DatasetMetadata* dataset_meta) {
 
 	dlopen("libpython3.5m.so", RTLD_NOW | RTLD_GLOBAL);
 	Py_InitializeEx(0);
@@ -76,7 +77,7 @@ int PythonWriter::Initialize() {
 
 	ifstream script_file("python/tfrecordswriter.py");
 	if (!script_file.is_open()) {
-        WriteErrorLog(string("Error reading script file python/tfrecordswriter.py").c_str());
+        LOG(ERROR) << "Error reading script file python/tfrecordswriter.py";
 		return -1;
 	}
 
@@ -87,14 +88,14 @@ int PythonWriter::Initialize() {
 	PyObject* pCompiledFn = Py_CompileString(script_data.c_str() , "" , Py_file_input);
 	if (pCompiledFn == NULL) {
 		PyErr_PrintEx(0);
-        WriteErrorLog("Error running Py_CompileString");
+        LOG(ERROR) << "Error running Py_CompileString";
 		return -1;
 	}
 
 	PyObject* pModule = PyImport_ExecCodeModule("cvedia" , pCompiledFn);
 	if (pModule == NULL) {
 		PyErr_PrintEx(0);
-        WriteErrorLog("Python error");
+        LOG(ERROR) << "Python error";
         return -1;
 	}
 
@@ -104,7 +105,7 @@ int PythonWriter::Initialize() {
 	pInitFn = PyObject_GetAttrString(pModule ,"initialize");
 	if (pInitFn == NULL) {
 		PyErr_PrintEx(0);
-        WriteErrorLog("Could not find 'initialize' def in Python script");
+        LOG(ERROR) << "Could not find 'initialize' def in Python script";
 		return -1;
 	}
 
@@ -112,7 +113,7 @@ int PythonWriter::Initialize() {
 	pWriteFn = PyObject_GetAttrString(pModule ,"write_data");
 	if (pWriteFn == NULL) {
 		PyErr_PrintEx(0);
-        WriteErrorLog("Could not find 'write_data' def in Python script");
+        LOG(ERROR) << "Could not find 'write_data' def in Python script";
 		return -1;
 	}
 
@@ -120,7 +121,7 @@ int PythonWriter::Initialize() {
 	pFinalFn = PyObject_GetAttrString(pModule ,"finalize");
 	if (pFinalFn == NULL) {
 		PyErr_PrintEx(0);
-        WriteErrorLog("Could not find 'finalize' def in Python script");
+        LOG(ERROR) << "Could not find 'finalize' def in Python script";
 		return -1;
 	}
 	
@@ -209,7 +210,7 @@ int PythonWriter::Finalize() {
 int PythonWriter::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
-		WriteErrorLog("Must call Initialize() first");
+		LOG(ERROR) << "Must call Initialize() first";
 		return -1;
 	}
 
@@ -261,7 +262,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 				pyArr = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, &e->float_raw_data[0]);
 
 			} else {
-				WriteErrorLog(string("Unsupported dtype '" + e->dtype + "' passed").c_str());
+				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
 				return -1;
 			}
 
@@ -288,7 +289,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 			} else if (e->dtype == "float") {
 				AddToDict(meta_dict, PyUnicode_FromString("value"), PyFloat_FromDouble(e->float_value));
 			} else {
-				WriteErrorLog(string("Unsupported dtype '" + e->dtype + "' passed").c_str());
+				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
 				return -1;				
 			}
 		}
@@ -310,7 +311,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 		else if (e->meta_type == METADATA_TYPE_GROUND)
 			PyList_Append(pyListGround, meta_dict);
 		else {
-			WriteErrorLog(string("Unsupported meta_type encountered: " + e->meta_type).c_str());
+			LOG(ERROR) << "Unsupported meta_type encountered: " << e->meta_type;
 			return -1;			
 		}
 	
@@ -333,7 +334,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 
 	if (!PyObject_IsTrue(rslt)) {
 		Py_XDECREF(rslt);
-		WriteErrorLog("Call to Python function 'write_data' failed");
+		LOG(ERROR) << "Call to Python function 'write_data' failed";
 		return -1;
 	}
 
@@ -355,7 +356,7 @@ string PythonWriter::WriteImageData(string filename, vector<uint8_t> image_data)
 
 	int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
-		WriteErrorLog(string("Could not create directory: " + path).c_str());
+		LOG(ERROR) << "Could not create directory: " << path;
 		return "";
 	}
 
@@ -367,7 +368,7 @@ string PythonWriter::WriteImageData(string filename, vector<uint8_t> image_data)
 
 			int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 			if (dir_err == -1 && errno != EEXIST) {
-				WriteErrorLog(string("Could not create directory: " + path).c_str());
+				LOG(ERROR) << "Could not create directory: " << path;
 				return "";
 			}
 		}

@@ -19,7 +19,7 @@ public:
 	WriterStats GetStats();
 	void ClearStats();
 	
-	virtual int Initialize();
+	virtual int Initialize(DatasetMetadata* dataset_meta);
 	virtual int Finalize();
 
 	string mBasePath;
@@ -33,19 +33,13 @@ public:
 private:
 
 	virtual bool ValidateData(vector<Metadata* > meta);
-	virtual string PrepareData(Metadata* meta);
 
 	WriterStats mCsvStats;
+	DatasetMetadata* mDataset;
 
 	bool mInitialized;
 
-	bool mCreateTrainFile;
-	bool mCreateTestFile;
-	bool mCreateValFile;
-
-	ofstream mTrainFile;
-	ofstream mTestFile;
-	ofstream mValidateFile;
+	map<string,ofstream> mSetFile;
 };
 
 #endif

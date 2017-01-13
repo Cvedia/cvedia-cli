@@ -26,6 +26,7 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+#include "easylogging++.h"
 #include "globals.hpp"
 #include "md5.hpp"
 #include "api.hpp"
@@ -36,6 +37,8 @@
 
 using namespace std;
 using namespace rapidjson;
+
+extern DatasetMetadata* gDatasetMeta;
 
 int InitializeApi() {
 
@@ -56,13 +59,15 @@ int InitializeApi() {
 				string api_version = d["version"].GetString();
 				string motd = d["motd"].GetString();
 
+				LOG(INFO) << "API version: " << api_version;
+				LOG(INFO) << motd;
 				delete req;
 				return 0;
 			}
 		}
 	}
 
-	WriteDebugLog(string("Failed to initialize Cvedia API (" + api_url + ")").c_str());
+	LOG(FATAL) << "Failed to initialize Cvedia API (" << api_url << ")";
 
 	if (req != NULL)
 		delete req;
@@ -70,30 +75,119 @@ int InitializeApi() {
 	return -1;
 }
 
-int GetTotalDatasetSize(map<string,string> options) {
+/**
+    Returns the metadata describing the specified Job ID
+
+    @param job_id the jobid to retrieve
+    @return DatasetMetadata struct containing all details
+*/
+DatasetMetadata* GetDatasetMetadata(string job_id) {
 
 	int count = 0;
 
-	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_COUNT);
+	DatasetMetadata* meta = new DatasetMetadata;
 
-	WriteDebugLog(string("Fetching dataset size at " + api_url).c_str());
+	string api_url = gApiUrl + gAPIVersion + "/" + job_id + "/" + string(API_FUNCTION_COUNT);
 
-	ReadRequest *req = CurlReader::RequestUrl(api_url);
+	LOG(INFO) << "Fetching dataset metadata at " << api_url;
+
+	ReadRequest* req = CurlReader::RequestUrl(api_url);
 
 	if (req != NULL && req->read_data.size() > 0) {
 
 		Document d;
 		string data_str( req->read_data.begin(), req->read_data.end() );
-		d.Parse(data_str.c_str());
 
-		Value& count_val = d["count"];
+		if (d.Parse(data_str.c_str()).HasParseError()) {
+			LOG(ERROR) << "Failed to parse API Response. Does the JobID exist?";
+			return NULL;
+		}
 
-		count = count_val.GetInt();
+		if (d.HasMember("count")) {
+			Value& count_val = d["count"];
+
+			count = count_val.GetInt();
+		} else {
+			LOG(ERROR) << "Could not get stats for JobID. Does it exist?";
+			return NULL;
+		}
+
+		meta->count = count;
+
+		if (d.HasMember("mapping")) {
+
+			LOG(DEBUG) << "Loading output mapping";
+
+			Value& mapping = d["mapping"];
+
+			if (mapping.IsArray()) {
+
+				int map_size = mapping.Size();
+
+				for (int map_idx = 0; map_idx < map_size; ++map_idx) {
+					const Value& obj = mapping[map_idx];
+
+					DatasetMapping* mapping_entry = new DatasetMapping;
+
+					// Iterate through all object members
+					for (Value::ConstMemberIterator itr = obj.MemberBegin(); itr != obj.MemberEnd(); ++itr) {
+
+						string key = itr->name.GetString();
+
+						if (key == "name") {
+							mapping_entry->name = itr->value.GetString();
+							// Add the mapping entry to our name lookup table
+							meta->mapping_by_name[mapping_entry->name] = mapping_entry;
+						} else if (key == "id") {
+							mapping_entry->id = itr->value.GetInt();							
+							// Add the mapping entry to our input id table
+							meta->mapping_by_id.push_back(mapping_entry);
+						} else if (key == "fieldid") {
+							mapping_entry->field_id = itr->value.GetInt();
+							// Add the mapping entry to our field_id lookup table
+							meta->mapping_by_field_id[mapping_entry->field_id] = mapping_entry;
+						}
+					}
+				}
+			}
+
+		} else {
+			LOG(ERROR) << "Missing output mapping";			
+			return NULL;
+		}
+
+		if (d.HasMember("splits")) {
+
+			LOG(DEBUG) << "Loading output sets";
+
+			Value& sets = d["splits"];
+
+			if (sets.IsObject()) {
+
+				// Iterate through all object members
+				for (Value::ConstMemberIterator itr = sets.MemberBegin(); itr != sets.MemberEnd(); ++itr) {
+
+					string key = itr->name.GetString();
+					float perc = itr->value.GetInt();
+
+					DatasetSet s;
+
+					s.set_name = key;
+					s.set_perc = perc;
+
+					meta->sets.push_back(s);
+				}
+			}
+
+		} else {
+			LOG(ERROR) << "Missing output sets";			
+			return NULL;
+		}		
 	} else {
-		WriteDebugLog(string("No data returned by API call").c_str());
+		LOG(ERROR) << "No data returned by API call";
 	}
 
-	return count;
+	return meta;
 }
 
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
@@ -104,7 +198,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
 	api_url = ReplaceString(api_url, "$BATCHID", to_string(batch_idx));
 
-	WriteDebugLog(string("Fetching batch at " + api_url).c_str());
+	LOG(DEBUG) << "Fetching batch at " << api_url;
 
 	ReadRequest *req = CurlReader::RequestUrl(api_url);
 
@@ -146,7 +240,7 @@ vector<Metadata* > ParseFeed(const char* feed) {
 					string key = itr->name.GetString();
 
 					// Couple of key members that are required and processed seperately
-					if (key == "type") {
+					if (key == "set") {
 						meta_record->type = itr->value.GetString();
 					} else if (key == "data") {
 
@@ -164,7 +258,7 @@ vector<Metadata* > ParseFeed(const char* feed) {
 						}
 
 					} else {
-						WriteErrorLog(string("Unsupported fields found in body: " + key).c_str());
+						LOG(ERROR) << "Unsupported fields found in body: " << key;
 						goto invalid;
 					}
 				}
@@ -184,15 +278,14 @@ vector<Metadata* > ParseFeed(const char* feed) {
 	return meta_vector;
 
 	invalid:
-	WriteDebugLog("ParseFeed() Error parsing JSON data");
+	LOG(ERROR) << "ParseFeed() Error parsing JSON data";
 	meta_vector.clear();
 	return meta_vector;
 }
 
-vector<Metadata* > ParseTarFeed(const char* feed) {
+vector<MetadataEntry* > ParseTarFeed(const char* feed) {
 
-	vector<Metadata* > meta_vector;
-	map<int, Metadata* > meta_map;	// Used to link the corresponding ground to source through their Id field
+	vector<MetadataEntry* > meta_vector;
 
 	Document api_doc;
 	api_doc.Parse(feed);
@@ -215,16 +308,8 @@ vector<Metadata* > ParseTarFeed(const char* feed) {
 
 			assert(entry != NULL);
 
-			// Havent seen this Id yet
-			if (meta_map.count(entry->id) == 0) {
-				meta_map[entry->id] = meta_record;
-				// Store new Metadata in the output vector
-				meta_vector.push_back(meta_record);
-			} else {
-				// We already have this Id, delete the new meta_record and add to vector<> only
-				meta_map[entry->id]->entries.push_back(entry);
-				delete meta_record;
-			}
+			meta_vector.insert(meta_vector.end(), meta_record->entries.begin(), meta_record->entries.end());
+			delete meta_record;
 		}
 
 	} else {
@@ -234,7 +319,7 @@ vector<Metadata* > ParseTarFeed(const char* feed) {
 	return meta_vector;
 
 	invalid:
-	WriteDebugLog("ParseTarFeed() Error parsing JSON data");
+	LOG(ERROR) << "ParseTarFeed() Error parsing JSON data";
 	meta_vector.clear();
 	return meta_vector;
 }
@@ -243,15 +328,15 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 
 	MetadataEntry* meta_entry = new MetadataEntry();
 
-	bool contains_source = false;
-	bool contains_groundtruth = false;
+	meta_entry->field_id = -1;
+	meta_entry->id = -1;
 
 	// These keys are checked before the rest since they influence the
 	// parsing of the data
 	if (entryObj["type"].IsString()) {
 		meta_entry->value_type = entryObj["type"].GetString();
 	} else {									
-		WriteErrorLog("Metadata entry does not specify a 'type'");
+		LOG(ERROR) << "Metadata entry does not specify a 'type'";
 		goto invalid;
 	}
 
@@ -276,24 +361,32 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 			meta_entry->data_channels = entry_itr->value.GetInt();
 		} else if (key == "id") {
 			meta_entry->id = entry_itr->value.GetInt();
+		} else if (key == "fieldid") {
+			meta_entry->field_id = entry_itr->value.GetInt();
+			// Translate field_id to an output field
+			meta_entry->id = gDatasetMeta->mapping_by_field_id[meta_entry->field_id]->id;
 		} else if (key == "width") {
 			meta_entry->data_width = entry_itr->value.GetInt();
 		} else if (key == "height") {
 			meta_entry->data_height = entry_itr->value.GetInt();
+		} else if (key == "name") {
+			meta_entry->field_name = entry_itr->value.GetString();
+			// Translate field_name to an output field
+			meta_entry->id = gDatasetMeta->mapping_by_name[meta_entry->field_name]->id;
 		} else if (key == "value") {
-			if (meta_entry->value_type == METADATA_VALUE_TYPE_LABEL) {
+			if (meta_entry->value_type == METADATA_VALUE_TYPE_STRING) {
 
 				if (entry_itr->value.IsArray()) {
 
 					int value_size = entry_itr->value.Size();
 
 					for (int value_idx = 0; value_idx < value_size; ++value_idx) {
-						meta_entry->label.push_back(entry_itr->value[value_idx].GetString());
+						meta_entry->string_value.push_back(entry_itr->value[value_idx].GetString());
 					}
 				}
 			} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 				if (meta_entry->dtype == "") {
-					WriteErrorLog(string("Missing 'dtype' for METADATA_VALUE_TYPE_NUMERIC").c_str());
+					LOG(ERROR) << "Missing 'dtype' for METADATA_VALUE_TYPE_NUMERIC";
 					goto invalid;
 				}
 
@@ -302,28 +395,13 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 				} else if (meta_entry->dtype == "float") {
 					meta_entry->float_value = entry_itr->value.GetFloat();
 				} else {
-					WriteErrorLog(string("Invalid 'dtype' found for METADATA_VALUE_TYPE_NUMERIC: " + meta_entry->dtype).c_str());
+					LOG(ERROR) << "Invalid 'dtype' found for METADATA_VALUE_TYPE_NUMERIC: " << meta_entry->dtype;
 					goto invalid;												
 				}
 
 			} else {
-				WriteErrorLog(string("Found 'value' for unsupported METADATA_TYPE: " + meta_entry->value_type).c_str());
+				LOG(ERROR) << "Found 'value' for unsupported METADATA_TYPE: " << meta_entry->value_type;
 				goto invalid;										
-			}
-		} else if (key == "contains") {
-			if (entry_itr->value.IsArray()) {
-
-				int value_size = entry_itr->value.Size();
-				for (int value_idx = 0; value_idx < value_size; ++value_idx) {
-					string strval = entry_itr->value[value_idx].GetString();
-
-					// Remember what this entry is used for
-					if (strval == "source") {
-						contains_source = true;
-					} else if (strval == "groundtruth") {
-						contains_groundtruth = true;
-					}
-				}
 			}
 		} else {
 			// Generic optional fields follow
@@ -338,10 +416,11 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 		}
 	}	// End of object member iteration
 
-	// One must be specified at a minimum unless you're an archive
-	if (!contains_source && !contains_groundtruth && meta_entry->value_type != METADATA_VALUE_TYPE_ARCHIVE) {
-		WriteDebugLog("Metadata entry does indicate source or groundtruth usage!");
-		return NULL;
+	// Record not linked to any output. Impossible, unless it's an archive
+	// which has its metadata in a file_id.diz
+	if (meta_entry->id == -1 && meta_entry->value_type != METADATA_VALUE_TYPE_ARCHIVE) {
+		LOG(ERROR) << "meta_entry has no valid ID";
+		goto invalid;
 	}
 
 	// No filename was passed by API. Lets generate one
@@ -354,27 +433,7 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 			meta_entry->filename += ".png";
 	}
 
-	// Found a combined record. probably an archive
-	if (contains_source && contains_groundtruth) {
-
-		meta_entry->meta_type = METADATA_TYPE_SOURCE;
-		meta_output->entries.push_back(meta_entry);
-
-		// Create a copy since both source and ground need this data
-		MetadataEntry* meta_entry2 = new MetadataEntry();
-		memcpy(meta_entry2, meta_entry, sizeof(MetadataEntry));
-		meta_entry2->meta_type = METADATA_TYPE_GROUND;
-		meta_output->entries.push_back(meta_entry2);
-	} else {
-
-		// Only 1 'contains' is set
-		if (contains_source)
-			meta_entry->meta_type = METADATA_TYPE_SOURCE;
-		else if (contains_groundtruth)
-			meta_entry->meta_type = METADATA_TYPE_GROUND;
-
-		meta_output->entries.push_back(meta_entry);
-	}
+	meta_output->entries.push_back(meta_entry);
 
 	return meta_output;
 

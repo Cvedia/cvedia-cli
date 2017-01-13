@@ -32,14 +32,12 @@ public:
 
 	virtual bool ValidateData(vector<Metadata* > meta) = 0;
 
-	virtual int Initialize() = 0;
+	virtual int Initialize(DatasetMetadata* dataset_meta) = 0;
 	virtual int Finalize() = 0;
 
 	virtual WriterStats GetStats() = 0;
 	virtual void ClearStats() = 0;
 
-private:
-	virtual string PrepareData(Metadata* meta) = 0;
 };
 
 #endif
