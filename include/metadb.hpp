@@ -15,10 +15,11 @@ public:
 
 	int NewDb(const string db_file);
 	int LoadDb(const string db_file);
-	void InsertHash(string api_hash, string record_hash);
+	void InsertHash(int file_id, string api_hash, string record_hash);
 	void InsertMeta(string key, string value);
 	string GetMeta(string key);
 	bool HasApiHash(string hash);
+	int GetFileId(string file_name);
 
 private:
 	void PrepareStatements();

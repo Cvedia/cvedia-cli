@@ -184,7 +184,7 @@ string CsvWriter::WriteData(Metadata* meta) {
 
 	buf[32]=0;
 
-	return string(buf);
+	return "file=" + meta->type + ".txt;hash=" + string(buf);
 }
 
 string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {

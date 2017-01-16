@@ -8,6 +8,7 @@ using namespace std;
 
 extern int gDebug;
 
+int VerifyApi(map<string,string> options);
 void ConfigureLogger();
 string JoinStringVector(const vector<string>& vec, const char* delim);
 int StartExport(map<string,string> options);
