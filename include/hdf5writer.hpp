@@ -21,7 +21,7 @@ public:
 	Hdf5Writer() {};
 	~Hdf5Writer();
 
-	int WriteData(Metadata* meta);
+	string WriteData(Metadata* meta);
 
 	WriterStats GetStats();
 	void ClearStats();

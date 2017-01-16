@@ -8,6 +8,7 @@ using namespace std;
 
 extern int gDebug;
 
+void ConfigureLogger();
 string JoinStringVector(const vector<string>& vec, const char* delim);
 int StartExport(map<string,string> options);
 string ReplaceString(string subject, const string& search, const string& replace);

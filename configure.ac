@@ -58,7 +58,7 @@ AC_ARG_WITH([hdf5_cpp],
 
 AC_SEARCH_LIBS([H5Topen], [hdf5_cpp],
 	if test x"$with_hdf5" != x"no"; then
-		[AC_DEFINE(HAVE_HDF5,1,[define if HDF5 is supported.])  
+		[AC_DEFINE(HAVE_HDF5,1,[Define if HDF5 is supported.])  
 		with_hdf5=yes
 	fi
 ],
@@ -67,9 +67,31 @@ AC_SEARCH_LIBS([H5Topen], [hdf5_cpp],
 ]
 )
 
+#### Find OpenSSL
+AC_MSG_CHECKING([for --with-openssl])
+AC_ARG_WITH(
+	[openssl],
+	[AS_HELP_STRING([--with-openssl],[/absolute/path/to/openssl-base])],
+	[ LDFLAGS="$LDFLAGS -L$with_openssl/lib";
+	  CFLAGS="$CFLAGS -I$with_openssl/include/";
+	  LIBS="-lssl";
+	  AC_MSG_RESULT([$with_openssl])
+	],
+	[AC_MSG_RESULT([no])]
+)
+
+AC_CHECK_LIB([crypto],[CRYPTO_new_ex_data], [], [AC_MSG_ERROR([OpenSSL libraries required])])
+
+AC_CHECK_HEADERS([openssl/crypto.h openssl/x509.h openssl/pem.h openssl/ssl.h openssl/err.h],[],[AC_MSG_ERROR([OpenSSL headers required])])
+
+PKG_CHECK_MODULES([SQLITE3], [sqlite3], [have_libsqlite3=yes], [have_libsqlite3=no])
+AM_CONDITIONAL([LIB_SQLITE3],  [test "$have_libsqlite3" = "yes"])
+
 AM_CONDITIONAL(HAVE_HDF5, test x"$with_hdf5" = x"yes")
 AM_CONDITIONAL(HAVE_TFRECORDS, test x"$with_tfrecords" = x"yes")
 AM_CONDITIONAL(HAVE_PYTHON, test x"$with_python" = x"yes")
+
+AM_CONDITIONAL(HAVE_SQLITE, test x"$have_libsqlite3" = x"yes")
 
 PKG_CHECK_MODULES([CURL], [libcurl])
 
@@ -95,6 +117,8 @@ AC_OUTPUT([
 AC_MSG_RESULT([dnl
 
 * optional dependencies  
+Support Sqlite3:                            $have_libsqlite3
+  (requires libsqlite3-dev)
 Support HDF5 output format:                 $with_hdf5
   (requires libhdf5-dev)
 Support TFRecords output format:            $with_python

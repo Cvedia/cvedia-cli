@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <openssl/md5.h>
 
 using namespace std;
 
@@ -71,16 +72,36 @@ int CsvWriter::Initialize(DatasetMetadata* dataset_meta) {
 		return -1;
 	}
 
-	// Open all output sets on disk
+	// Remove the existing outputs
 	for (DatasetSet s : dataset_meta->sets) {
-		mSetFile[s.set_name].open(mBasePath + s.set_name + ".txt", ios::out | ios::trunc);
+		remove((mBasePath + s.set_name + ".txt").c_str());
+	}
+
+	mInitialized = true;
+
+	return 0;
+}
+
+int CsvWriter::BeginWriting(DatasetMetadata* dataset_meta) {
+	
+	// Open all output sets on disk in append mode
+	for (DatasetSet s : dataset_meta->sets) {
+		mSetFile[s.set_name].open(mBasePath + s.set_name + ".txt", ios::out | ios::app);
 		if (!mSetFile[s.set_name].is_open()) {
 			LOG(ERROR) << "Failed to open: " << mBasePath << s.set_name << ".txt";
 			return -1;			
 		}		
 	}
 
-	mInitialized = true;
+	return 0;
+}
+
+int CsvWriter::EndWriting(DatasetMetadata* dataset_meta) {
+	
+	// Close all open files
+	for (DatasetSet s : dataset_meta->sets) {
+		mSetFile[s.set_name].close();
+	}
 
 	return 0;
 }
@@ -95,18 +116,19 @@ int CsvWriter::Finalize() {
 	return 0;
 }
 
-int CsvWriter::WriteData(Metadata* meta) {
+string CsvWriter::WriteData(Metadata* meta) {
 
 	map<int,string> output_values;
+	unsigned char md5result[MD5_DIGEST_LENGTH];
 
 	if (!mInitialized) {
 		LOG(ERROR) << "Must call Initialize() first";
-		return -1;
+		return "";
 	}
 
 	if (meta == NULL || meta->entries.size() == 0) {
 		LOG(ERROR) << "No work provided for CsvWriter::WriteData";
-		return -1;
+		return "";
 	}
 
 	// Convert all images to paths
@@ -154,7 +176,15 @@ int CsvWriter::WriteData(Metadata* meta) {
 
 	mSetFile[meta->type] << output_line << endl;
 
-	return 0;
+	MD5((unsigned char *)output_line.c_str(), output_line.size(), md5result);
+
+	char buf[33];
+	for (int i=0; i<16; i++)
+		sprintf(buf+i*2, "%02x", md5result[i]);
+
+	buf[32]=0;
+
+	return string(buf);
 }
 
 string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {

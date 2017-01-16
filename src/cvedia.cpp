@@ -47,6 +47,7 @@ using namespace rapidjson;
 #include "pythonwriter.hpp"
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
+#include "metadb.hpp"
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -64,6 +65,7 @@ int lTermWidth = 80;
 
 string gBaseDir = "";
 string gExportName = "";
+el::Level gLogLevel;
 string gApiUrl = "http://api.cvedia.com/";
 string gOutputFormat = "csv";
 string gJobID = "";
@@ -71,14 +73,14 @@ string gJobID = "";
 string gVersion = CLI_VERSION;
 string gAPIVersion = API_VERSION;
 
+bool gResume = false;
+
 void SigHandler(int s);
 bool gInterrupted = false;
 
-enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
+enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, LOGLEVEL, RESUME, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
 
 int main(int argc, char* argv[]) {
-
-	el::Loggers::reconfigureAllLoggers(el::ConfigurationType::Format, "%datetime %level %loc] %msg");
 
 	vector<string> supported_output;
 	vector<option::Descriptor> module_vec;
@@ -133,8 +135,10 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, version.c_str() });
 	usage_vec.push_back({HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." });
 	usage_vec.push_back({JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" });
+	usage_vec.push_back({LOGLEVEL,    	0,"l", "log-level",option::Arg::Required, "  --log-level=<level>, -l <level>  \tSpecify the log level (fatal,error,warning,debug,info,trace)" });
 	usage_vec.push_back({DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" });
 	usage_vec.push_back({NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" });
+	usage_vec.push_back({RESUME,   	0,"" , "resume",option::Arg::None, "  --resume  \tResume downloading an existing job." });
 	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
 	usage_vec.push_back({BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." });
 	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." });
@@ -195,6 +199,10 @@ int main(int argc, char* argv[]) {
 		gApiUrl = options[API].arg;
 	}
 	
+	if (options[RESUME].count() == 1) {
+		gResume = true;
+	}
+
 	if (options[THREADS].count() == 1) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
@@ -210,6 +218,28 @@ int main(int argc, char* argv[]) {
 		std::transform(gOutputFormat.begin(), gOutputFormat.end(), gOutputFormat.begin(), ::tolower);
 	}
 
+	if (options[LOGLEVEL].count() == 1) {
+		string loglevel = options[LOGLEVEL].arg;
+
+		if (loglevel == "trace") {
+			gLogLevel = el::Level::Trace;
+		} else if (loglevel == "debug") {
+			gLogLevel = el::Level::Debug;
+		} else if (loglevel == "fatal") {
+			gLogLevel = el::Level::Fatal;
+		} else if (loglevel == "error") {
+			gLogLevel = el::Level::Error;
+		} else if (loglevel == "warning") {
+			gLogLevel = el::Level::Warning;
+		} else if (loglevel == "verbose") {
+			gLogLevel = el::Level::Verbose;
+		} else if (loglevel == "info") {
+			gLogLevel = el::Level::Info;
+		}
+	}
+
+	ConfigureLogger();
+
 	// Initialize the Curl library
 	// We could've done this inside the curlreader but with those being created
 	// and destroyed continually this is a better approach
@@ -219,7 +249,7 @@ int main(int argc, char* argv[]) {
 	}
 	
 	if (gBaseDir == "")
-		gBaseDir = ".";
+		gBaseDir = "./";
 	else
 		gBaseDir += "/";
 
@@ -255,14 +285,30 @@ void SigHandler(int s) {
 	if (gInterrupted == false) {
 		gInterrupted = true;
 
-		cout << "Ctrl-C received. Will finish current batch before exiting. Press Ctrl-C again to terminate immediately.";
+		cout << "Ctrl-C received. Will finish current batch before exiting. Press Ctrl-C again to terminate immediately.\n";
 	} else {
-		cout << "Terminating immediately.";
+		cout << "Terminating immediately.\n";
 		exit(1);
 	}
 }
 
 int StartExport(map<string,string> options) {
+
+	MetaDb* p_mdb = new MetaDb();
+
+	if (gResume == false) {
+		int rc = p_mdb->NewDb(options["working_dir"] + "/" + gExportName + ".db");
+	}
+	else {
+		int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gExportName + ".db");
+		if (rc == 0) {
+			LOG(ERROR) << "Could not open resume state";
+		}
+	}
+
+	p_mdb->InsertMeta("api_version", gAPIVersion);
+	p_mdb->InsertMeta("cli_version", gVersion);
+	p_mdb->InsertMeta("name", gExportName);
 
 	time_t seconds;
 
@@ -325,13 +371,18 @@ int StartExport(map<string,string> options) {
 
 		// Queue up all requests in this batch
 		for (Metadata* m : meta_data) {
-			for (MetadataEntry* entry : m->entries) {
 
-				// Download all images/raw/archives for both source and groundtruth
-				if (entry->url != "") {
-					p_reader->QueueUrl(md5(entry->url), entry->url);
-					queued_downloads++;
+			if (!p_mdb->HasApiHash(m->hash)) {
+				for (MetadataEntry* entry : m->entries) {
+
+					if (entry->url != "") {
+						p_reader->QueueUrl(md5(entry->url), entry->url);
+						queued_downloads++;
+					}
 				}
+			} else {
+				m->skip_record = true;
+				LOG(TRACE) << m->hash << " is already in hashes db";
 			}
 		}
 
@@ -374,11 +425,14 @@ int StartExport(map<string,string> options) {
 		for (Metadata* m : meta_data) {
 			// Find the request for a specific filename
 
-			bool skip_meta_entry = false;
+			if (m->skip_record)
+				continue;
 
 			vector<MetadataEntry* > new_entries;
 
 			for (MetadataEntry* entry : m->entries) {
+
+				bool skip_meta_entry = false;
 
 				if (entry->url != "") {	// Did we download something ?
 					ReadRequest* req = responses[md5(entry->url)];
@@ -505,6 +559,11 @@ int StartExport(map<string,string> options) {
 		int to_write = meta_data_unpacked.size();
 		int cur_write = 0;
 
+		if (p_writer->BeginWriting(gDatasetMeta) != 0) {
+			LOG(ERROR) << "BeginWriting() failed ";
+			return -1;
+		}
+
 		for (Metadata* m : meta_data_unpacked) {
 
 			if (time(NULL) != seconds) {
@@ -513,13 +572,21 @@ int StartExport(map<string,string> options) {
 				seconds = time(NULL);
 			}
 
-			int res = p_writer->WriteData(m);
-			if (res != 0) {
-				LOG(ERROR) << "WriteData returned non zero";
+			string record_hash = p_writer->WriteData(m);
+			if (record_hash == "") {
+				LOG(ERROR) << "WriteData returned empty hash";
 				return -1;
 			}
 
+			// Insert the API and record hash into the meta db
+			p_mdb->InsertHash(m->hash, record_hash);
+
 			cur_write++;
+		}
+
+		if (p_writer->EndWriting(gDatasetMeta) != 0) {
+			LOG(ERROR) << "EndWriting() failed ";
+			return -1;
 		}
 
 		DisplayProgressBar(1, cur_write, to_write);
@@ -573,6 +640,53 @@ int ReadRequestToMetadataEntry(ReadRequest* req, MetadataEntry* entry) {
 	}
 
 	return 0;
+}
+
+void ConfigureLogger() {
+
+	el::Configurations config;
+
+	config.set(el::Level::Global, el::ConfigurationType::Format, "%datetime %level %loc] %msg");
+
+	if (gLogLevel == el::Level::Debug)
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+	else if (gLogLevel == el::Level::Info)
+	{
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Debug, el::ConfigurationType::Enabled, "false");
+	}
+	else if (gLogLevel == el::Level::Warning)
+	{
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Debug, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Info, el::ConfigurationType::Enabled, "false");
+	}
+	else if (gLogLevel == el::Level::Error)
+	{
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Debug, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Info, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Warning, el::ConfigurationType::Enabled, "false");
+	}
+	else if (gLogLevel == el::Level::Fatal)
+	{
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Debug, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Info, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Warning, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Error, el::ConfigurationType::Enabled, "false");
+	}
+	else if (gLogLevel == el::Level::Unknown)
+	{
+		config.set(el::Level::Trace, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Debug, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Info, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Warning, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Error, el::ConfigurationType::Enabled, "false");
+		config.set(el::Level::Fatal, el::ConfigurationType::Enabled, "false");
+	}
+
+	el::Loggers::reconfigureAllLoggers(config);
 }
 
 void DisplayProgressBar(float progress, int cur_value, int max_value) {

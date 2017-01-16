@@ -18,11 +18,13 @@ public:
 	PythonWriter() {};
 	~PythonWriter();
 
-	int WriteData(Metadata* meta);
-
 	WriterStats GetStats();
 	void ClearStats();
 	
+	virtual int BeginWriting(DatasetMetadata* dataset_meta);
+	string WriteData(Metadata* meta);
+	virtual int EndWriting(DatasetMetadata* dataset_meta);
+
 	virtual int Initialize(DatasetMetadata* dataset_meta);
 	virtual int Finalize();
 

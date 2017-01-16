@@ -196,7 +196,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 
 	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
-	api_url = ReplaceString(api_url, "$BATCHID", to_string(batch_idx));
+	api_url = ReplaceString(api_url, "$OFFSET", to_string(batch_idx*gBatchSize));
 
 	LOG(DEBUG) << "Fetching batch at " << api_url;
 
@@ -234,6 +234,8 @@ vector<Metadata* > ParseFeed(const char* feed) {
 				// Ok, object found in an array. so far so good. Lets start the metadata construction
 				Metadata* meta_record = new Metadata;
 
+				meta_record->skip_record = false;
+				
 				// Iterate through all object members
 				for (Value::ConstMemberIterator itr = obj.MemberBegin(); itr != obj.MemberEnd(); ++itr) {
 
@@ -256,6 +258,8 @@ vector<Metadata* > ParseFeed(const char* feed) {
 
 							} // End of loop over "data": []
 						}
+					} else if (key == "hash") {
+						meta_record->hash = itr->value.GetString();
 
 					} else {
 						LOG(ERROR) << "Unsupported fields found in body: " << key;

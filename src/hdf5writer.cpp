@@ -266,34 +266,34 @@ int Hdf5Writer::Finalize() {
 	return 0;
 }
 
-int Hdf5Writer::WriteData(Metadata* meta) {
+string Hdf5Writer::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
 		WriteErrorLog("Must call Initialize() first");
-		return -1;
+		return "";
 	}
 
 	if (meta->type == METADATA_TRAIN) {
 		if (!mCreateTrainFile) {
 			WriteErrorLog("Training file not specified but data contains DATA_TRAIN");			
-			return -1;
+			return "";
 		}
 
 	} else if (meta->type == METADATA_TEST) {
 		if (!mCreateTestFile) {
 			WriteErrorLog("Test file not specified but data contains DATA_TEST");			
-			return -1;
+			return "";
 		}
 
 	} else if (meta->type == METADATA_VALIDATE) {
 		if (!mCreateValFile) {
 			WriteErrorLog("Validate file not specified but data contains DATA_VALIDATE");			
-			return -1;
+			return "";
 		}
 
 	} else {
 		WriteErrorLog(string("API returned unsupported file type: " + meta->type).c_str());			
-		return -1;
+		return "";
 	}
 
 	void *source_ptr = NULL, *ground_ptr = NULL;
@@ -332,7 +332,7 @@ int Hdf5Writer::WriteData(Metadata* meta) {
 	AppendEntry(mDataSet[meta->type], source_ptr, mSourceDataDim, ConvertDtype(sourceDtype));
 	AppendEntry(mLabelSet[meta->type], ground_ptr, mGroundDataDim, ConvertDtype(groundDtype));
 
-	return 0;
+	return "";
 }
 
 const DataType& Hdf5Writer::ConvertDtype(string dtype) {

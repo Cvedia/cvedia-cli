@@ -181,6 +181,15 @@ bool PythonWriter::ValidateData(vector<Metadata* > meta) {
 	return true;
 }
 
+int PythonWriter::BeginWriting(DatasetMetadata* dataset_meta) {
+
+	return 0;
+}
+
+int PythonWriter::EndWriting(DatasetMetadata* dataset_meta) {
+
+	return 0;
+}
 
 string PythonWriter::PrepareData(Metadata* meta) {
 
@@ -207,11 +216,11 @@ int PythonWriter::Finalize() {
 	return 0;
 }
 
-int PythonWriter::WriteData(Metadata* meta) {
+string PythonWriter::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {
 		LOG(ERROR) << "Must call Initialize() first";
-		return -1;
+		return "";
 	}
 
 	MetadataEntry* source = NULL;
@@ -263,7 +272,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 
 			} else {
 				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
-				return -1;
+				return "";
 			}
 
 			// Add numpy array to dictionary	
@@ -290,7 +299,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 				AddToDict(meta_dict, PyUnicode_FromString("value"), PyFloat_FromDouble(e->float_value));
 			} else {
 				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
-				return -1;				
+				return "";				
 			}
 		}
 
@@ -312,7 +321,7 @@ int PythonWriter::WriteData(Metadata* meta) {
 			PyList_Append(pyListGround, meta_dict);
 		else {
 			LOG(ERROR) << "Unsupported meta_type encountered: " << e->meta_type;
-			return -1;			
+			return "";			
 		}
 	
 		Py_XDECREF(meta_dict);
@@ -329,18 +338,18 @@ int PythonWriter::WriteData(Metadata* meta) {
 
 	if (rslt == NULL) {
 		PyErr_PrintEx(0);
-		return -1;
+		return "";
 	}
 
 	if (!PyObject_IsTrue(rslt)) {
 		Py_XDECREF(rslt);
 		LOG(ERROR) << "Call to Python function 'write_data' failed";
-		return -1;
+		return "";
 	}
 
 	Py_XDECREF(rslt);
 
-	return 0;
+	return "";
 }
 
 void PythonWriter::AddToDict(PyObject* dict, PyObject* key, PyObject* val) {
