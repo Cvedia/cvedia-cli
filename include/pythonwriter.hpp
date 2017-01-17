@@ -24,6 +24,7 @@ public:
 	virtual int BeginWriting(DatasetMetadata* dataset_meta);
 	string WriteData(Metadata* meta);
 	virtual int EndWriting(DatasetMetadata* dataset_meta);
+	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta);
 
 	virtual int Initialize(DatasetMetadata* dataset_meta);
 	virtual int Finalize();

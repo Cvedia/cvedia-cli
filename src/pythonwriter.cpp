@@ -216,6 +216,11 @@ int PythonWriter::Finalize() {
 	return 0;
 }
 
+string PythonWriter::VerifyData(string file_name, DatasetMetadata* dataset_meta) {
+
+	return "";
+}
+
 string PythonWriter::WriteData(Metadata* meta) {
 
 	if (!mInitialized) {

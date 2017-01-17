@@ -286,8 +286,11 @@ int main(int argc, char* argv[]) {
 	sigaction(SIGINT, &sigIntHandler, NULL);
 
 	if (InitializeApi() == 0) {
+
 		if (gVerifyApi == true) {
 			VerifyApi(mod_options);
+		} else if (gVerifyLocal == true) {
+			VerifyLocal(mod_options);
 		} else {
 			StartExport(mod_options);
 		}
@@ -388,7 +391,7 @@ int StartExport(map<string,string> options) {
 		// Queue up all requests in this batch
 		for (Metadata* m : meta_data) {
 
-			if (!p_mdb->HasApiHash(m->hash)) {
+			if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
 				for (MetadataEntry* entry : m->entries) {
 
 					if (entry->url != "") {
@@ -643,6 +646,83 @@ int StartExport(map<string,string> options) {
 	return 0;
 }
 
+int VerifyLocal(map<string,string> options) {
+
+	LOG(INFO) << "Starting local dataset verification";
+
+	MetaDb* p_mdb = new MetaDb();
+
+	int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gJobID + ".db");
+	if (rc == 0) {
+		LOG(ERROR) << "Could not open resume state";
+		return -1;
+	}
+
+	gDatasetMeta = GetDatasetMetadata(gJobID);
+	if (gDatasetMeta == NULL) {
+		LOG(ERROR) << "Failed to fetch metadata for dataset";
+		return -1;		
+	}
+
+	vector<string> files = p_mdb->GetFileList();
+
+	IDataWriter *p_writer = NULL;
+
+	if (gOutputFormat == "csv") {
+		p_writer = new CsvWriter(gExportName, options);
+	} else if (gOutputFormat == "caffeimagedata") {
+		p_writer = new CaffeImageDataWriter(gExportName, options);
+#ifdef HAVE_HDF5
+	} else if (gOutputFormat == "hdf5") {
+		p_writer = new Hdf5Writer(gExportName, options);
+#endif
+#ifdef HAVE_PYTHON
+	} else if (gOutputFormat == "tfrecords") {
+		p_writer = new PythonWriter(gExportName, options);
+#endif
+	} else {
+		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
+	}
+
+	int found_in_metadb = 0;		// Hash records in the storage output that match with the Meta Db
+	int not_found_in_metadb = 0;	// Hash records that are not found in the Meta Db
+
+	for (string file : files) {
+		LOG(INFO) << file;
+
+		string result = "";
+
+		do {
+			// Tokenize the output from the writer. Key=Value;Key=Value...
+			map<string, string> keyval_map;
+
+			string writer_res = p_writer->VerifyData(file, gDatasetMeta);
+
+			for (const string& tag : split(writer_res, ';')) {
+				auto key_val = split(tag, '=');
+				keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+			}
+
+			string record_hash = keyval_map["hash"];
+			result = keyval_map["result"];
+
+			if (record_hash != "") {
+				LOG(TRACE) << "Checking for record hash " << record_hash;
+
+				if (p_mdb->ContainsHash(record_hash, "record_hash")) {
+					found_in_metadb++;
+				} else {
+					not_found_in_metadb++;
+				}
+			}
+
+		} while (result != "eof");
+	}
+
+	LOG(INFO) << "Records found in Meta Db: " << found_in_metadb;
+	LOG(INFO) << "Records not found in Meta Db: " << not_found_in_metadb;
+}
+
 int VerifyApi(map<string,string> options) {
 
 	LOG(INFO) << "Starting dataset verification with API";
@@ -685,7 +765,7 @@ int VerifyApi(map<string,string> options) {
 
 		for (Metadata* m : meta_data) {
 
-			if (p_mdb->HasApiHash(m->hash)) {
+			if (p_mdb->ContainsHash(m->hash, "api_hash")) {
 				found_local++;
 			} else {
 				not_found_local++;

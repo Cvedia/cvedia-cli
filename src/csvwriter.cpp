@@ -27,6 +27,22 @@ CsvWriter::CsvWriter(string export_name, map<string, string> options) {
 
 	mModuleOptions = options;
 	mExportName = export_name;
+
+	if (mModuleOptions["base_dir"] != "") {
+		mBaseDir = mModuleOptions["base_dir"];
+	} else {
+		mBaseDir = "";
+	}
+
+	mBasePath = mBaseDir;
+
+	if (mBasePath == "")
+		mBasePath = "./";
+	else
+		mBasePath += "/";
+
+	mBasePath += mExportName + "/";
+
 }
 
 CsvWriter::~CsvWriter() {
@@ -50,21 +66,6 @@ int CsvWriter::Initialize(DatasetMetadata* dataset_meta) {
 
 	// Clear the stats structure
 	mCsvStats = {};
-
-	if (mModuleOptions["base_dir"] != "") {
-		mBaseDir = mModuleOptions["base_dir"];
-	} else {
-		mBaseDir = "";
-	}
-
-	mBasePath = mBaseDir;
-
-	if (mBasePath == "")
-		mBasePath = "./";
-	else
-		mBasePath += "/";
-
-	mBasePath += mExportName + "/";
 
 	int dir_err = mkdir(mBasePath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
@@ -114,6 +115,36 @@ bool CsvWriter::ValidateData(vector<Metadata* > meta) {
 int CsvWriter::Finalize() {
 
 	return 0;
+}
+
+string CsvWriter::VerifyData(string file_name, DatasetMetadata* dataset_meta) {
+
+	unsigned char md5result[MD5_DIGEST_LENGTH];
+
+	if (mVerifyFilename != file_name) {
+		if (mVerifyFile.is_open())
+			mVerifyFile.close();
+
+		mVerifyFilename = file_name;
+		mVerifyFile.open(mBasePath + file_name);
+	}
+
+	string dataline;
+
+	if (!getline(mVerifyFile, dataline)) {
+		return "result=eof";
+	} else {
+
+		MD5((unsigned char *)dataline.c_str(), dataline.size(), md5result);
+
+		char buf[33];
+		for (int i=0; i<16; i++)
+			sprintf(buf+i*2, "%02x", md5result[i]);
+
+		buf[32]=0;
+
+		return "hash=" + string(buf);
+	}
 }
 
 string CsvWriter::WriteData(Metadata* meta) {

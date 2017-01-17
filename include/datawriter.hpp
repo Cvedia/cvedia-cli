@@ -33,7 +33,8 @@ public:
 	virtual int BeginWriting(DatasetMetadata* dataset_meta) = 0;
 	virtual int EndWriting(DatasetMetadata* dataset_meta) = 0;
 	virtual bool ValidateData(vector<Metadata* > meta) = 0;
-
+	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta) = 0;
+	
 	virtual int Initialize(DatasetMetadata* dataset_meta) = 0;
 	virtual int Finalize() = 0;
 
