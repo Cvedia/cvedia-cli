@@ -45,8 +45,10 @@ using namespace rapidjson;
 #include "csvwriter.hpp"
 #include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
+// #include "luawriter.hpp"
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
+#include "luamodules.hpp"
 #include "metadb.hpp"
 
 INITIALIZE_EASYLOGGINGPP
@@ -125,6 +127,21 @@ int main(int argc, char* argv[]) {
 
 #endif
 
+#ifdef HAVE_LUA
+	LOG(INFO) << "We have LUA in main function";
+	LuaModules::LoadLuaCore();
+	gModules = LuaModules::ListModules("./lua/");
+	for (export_module module : gModules) {
+		LOG(INFO) << "Found module: " << module.module_name;
+		supported_output.push_back(module.module_name);
+
+		string str_mod_help = string("\n\n\t##### " + module.module_name + " Module Options #####\n");
+		char* mod_help = new char[str_mod_help.length()+1]();
+		strcpy(mod_help, str_mod_help.c_str());
+		module_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, mod_help});
+
+	}
+#endif
 	string output_string = JoinStringVector(supported_output, ",");
 
 	vector<option::Descriptor> usage_vec;
@@ -327,6 +344,12 @@ int StartExport(map<string,string> options) {
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
 		p_writer = new PythonWriter(gExportName, options);
+#endif
+#ifdef HAVE_LUA
+	LOG(INFO) << "We have LUA";
+	} else if (gOutputFormat == "lua") {
+		// p_writer = new PythonWriter(gExportName, options);
+		LOG(INFO) << "Selected LUA writer";
 #endif
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
