@@ -139,6 +139,20 @@ int main(int argc, char* argv[]) {
 		char* mod_help = new char[str_mod_help.length()+1]();
 		strcpy(mod_help, str_mod_help.c_str());
 		module_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, mod_help});
+		for (export_module_param param : module.module_params) {
+
+			param.help = string(param.example + "  \t" + param.description);
+
+			// Convert the string() object to const char*. Converting them to c_str()
+			// directly into the Descriptor struct does not guarantuee their continued existence.
+			// These pointers are not freed
+			char* option = new char[param.option.length()+1]();
+			strcpy(option, param.option.c_str());
+			char* help = new char[param.help.length()+1]();
+			strcpy(help, param.help.c_str());
+
+			module_vec.push_back({UNKNOWN,    	0,"", option, (param.required == true ? option::Arg::Required : option::Arg::None), help });
+		}
 
 	}
 #endif
