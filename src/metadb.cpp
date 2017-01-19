@@ -21,6 +21,8 @@ using namespace std;
 #include "api.hpp"
 #include "metadb.hpp"
 
+extern bool gResume;
+
 /*
 metadata
 	key -> value
@@ -61,7 +63,24 @@ int MetaDb::NewDb(const string db_file) {
 	char* sql;
 
 	// Remove old db is one exists
-	remove(db_file.c_str());
+	struct stat buffer;   
+	bool exists = (stat(db_file.c_str(), &buffer) == 0); 
+
+	if (exists) {
+		char type;
+
+		do {
+			cout << "A MetaDb with the same Job ID already exists in this folder. Did you mean to resume? (y/N)" << endl;
+			cin >> type;
+		} while (!cin.fail() && type != 'y' && type != 'n' && type != 'Y' && type != 'N');			
+
+		if (type == 'n' || type == 'N')
+			remove(db_file.c_str());
+		else {
+			gResume = true;
+			return LoadDb(db_file);
+		}
+	}
 
 	// Open database 
 	int rc = sqlite3_open(db_file.c_str(), &db);
@@ -79,7 +98,7 @@ int MetaDb::NewDb(const string db_file) {
 		LOG(ERROR) << "SQL error: " << zErrMsg;
 		sqlite3_free(zErrMsg);
 	} else {
-		LOG(DEBUG) << "Table structure created";
+		LOG(INFO) << "New Meta Db created";
 	}
 
 	PrepareStatements();
@@ -124,7 +143,7 @@ int MetaDb::LoadDb(const string db_file) {
 		LOG(ERROR) << "Can't open database: " << sqlite3_errmsg(db);
 		return 0;
 	} else {
-		LOG(INFO) << "Loaded database " << db_file;
+		LOG(INFO) << "Loaded existing MetaDb database " << db_file;
 	}
 
 	PrepareStatements();

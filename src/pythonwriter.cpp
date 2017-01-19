@@ -63,7 +63,7 @@ void PythonWriter::ClearStats() {
 	mCsvStats = {};
 }
 
-int PythonWriter::Initialize(DatasetMetadata* dataset_meta) {
+int PythonWriter::Initialize(DatasetMetadata* dataset_meta, bool resume) {
 
 	dlopen("libpython3.5m.so", RTLD_NOW | RTLD_GLOBAL);
 	Py_InitializeEx(0);

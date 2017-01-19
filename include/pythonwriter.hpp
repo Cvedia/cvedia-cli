@@ -26,7 +26,7 @@ public:
 	virtual int EndWriting(DatasetMetadata* dataset_meta);
 	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta);
 
-	virtual int Initialize(DatasetMetadata* dataset_meta);
+	virtual int Initialize(DatasetMetadata* dataset_meta, bool resume);
 	virtual int Finalize();
 
 	string mBasePath;

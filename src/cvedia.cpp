@@ -363,7 +363,7 @@ int StartExport(map<string,string> options) {
 
 	// Initialize the writer module. This can fail in many ways including specifying
 	// a non-supported combination of output fields
-	if (p_writer->Initialize(gDatasetMeta) != 0) {
+	if (p_writer->Initialize(gDatasetMeta, gResume) != 0) {
 		LOG(ERROR) << "Failed to initialize " << gOutputFormat;
 		return -1;
 	}
@@ -373,11 +373,34 @@ int StartExport(map<string,string> options) {
 	// Fetch basic stats on export
 	int num_batches = ceil(batch_size / (float)gBatchSize);
 
+	StartFeedThread(options, 0);
+	
 	for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
 		unsigned int queued_downloads = 0;
 
-		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+		vector<Metadata* > meta_data;
+
+		do {
+
+			feed_mutex.lock();
+			{
+				// New data is ready
+				if (feed_readahead.size() > 0) {
+					meta_data = feed_readahead.front();
+					feed_readahead.pop_front();
+					feed_mutex.unlock();
+					break;
+				}
+			}
+			feed_mutex.unlock();
+
+			// Wait for new data to come in
+			usleep(500);
+
+		} while(1);
+
+//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 		if (meta_data.size() == 0) {
 			LOG(WARNING) << "No metadata returned by API, end of dataset?";
@@ -476,6 +499,8 @@ int StartExport(map<string,string> options) {
 							archive_read_close(ar);
 							archive_read_free(ar);
 
+							skip_meta_entry = true;
+							m->skip_record = true;	// Skip this record
 							continue;
 						}
 
@@ -562,8 +587,10 @@ int StartExport(map<string,string> options) {
 
 			}	// for (MetaDataEntry* entry : m->entries)
 
-			m->entries = new_entries;
-			meta_data_unpacked.push_back(m);
+			if (!m->skip_record) {
+				m->entries = new_entries;
+				meta_data_unpacked.push_back(m);
+			}
 
 		}	// for (Metadata* m : meta_data)
 
@@ -643,6 +670,8 @@ int StartExport(map<string,string> options) {
 	// Call finalize on the writer function
 	p_writer->Finalize();
 
+	StopFeedThread();
+	
 	return 0;
 }
 
@@ -754,7 +783,9 @@ int VerifyApi(map<string,string> options) {
 	int not_found_local = 0;	// Hash records that are not found locally
 	int not_seen_remote = 0;	// Hash records stored locally but not returned by API
 
-	for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+	int batch_idx = 0;
+
+	for (;batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
 		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
@@ -778,6 +809,9 @@ int VerifyApi(map<string,string> options) {
 			seconds = time(NULL);
 		}
 	}
+
+	DisplayProgressBar(1, batch_idx, num_batches);
+	cout << endl;
 
 	LOG(INFO) << "Found locally: " << found_local;
 	LOG(INFO) << "Not found locally: " << not_found_local;

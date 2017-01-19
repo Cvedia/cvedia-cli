@@ -11,10 +11,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <openssl/md5.h>
 
 using namespace std;
 
+#include "md5.hpp"
 #include "easylogging++.h"
 #include "config.hpp"
 #include "cvedia.hpp"
@@ -60,7 +60,7 @@ void CsvWriter::ClearStats() {
 	mCsvStats = {};
 }
 
-int CsvWriter::Initialize(DatasetMetadata* dataset_meta) {
+int CsvWriter::Initialize(DatasetMetadata* dataset_meta, bool resume) {
 
 	mDataset = dataset_meta;
 
@@ -74,8 +74,10 @@ int CsvWriter::Initialize(DatasetMetadata* dataset_meta) {
 	}
 
 	// Remove the existing outputs
-	for (DatasetSet s : dataset_meta->sets) {
-		remove((mBasePath + s.set_name + ".txt").c_str());
+	if (!resume) {
+		for (DatasetSet s : dataset_meta->sets) {
+			remove((mBasePath + s.set_name + ".txt").c_str());
+		}
 	}
 
 	mInitialized = true;
@@ -119,8 +121,6 @@ int CsvWriter::Finalize() {
 
 string CsvWriter::VerifyData(string file_name, DatasetMetadata* dataset_meta) {
 
-	unsigned char md5result[MD5_DIGEST_LENGTH];
-
 	if (mVerifyFilename != file_name) {
 		if (mVerifyFile.is_open())
 			mVerifyFile.close();
@@ -135,22 +135,13 @@ string CsvWriter::VerifyData(string file_name, DatasetMetadata* dataset_meta) {
 		return "result=eof";
 	} else {
 
-		MD5((unsigned char *)dataline.c_str(), dataline.size(), md5result);
-
-		char buf[33];
-		for (int i=0; i<16; i++)
-			sprintf(buf+i*2, "%02x", md5result[i]);
-
-		buf[32]=0;
-
-		return "hash=" + string(buf);
+		return "hash=" + md5(dataline);
 	}
 }
 
 string CsvWriter::WriteData(Metadata* meta) {
 
 	map<int,string> output_values;
-	unsigned char md5result[MD5_DIGEST_LENGTH];
 
 	if (!mInitialized) {
 		LOG(ERROR) << "Must call Initialize() first";
@@ -167,7 +158,18 @@ string CsvWriter::WriteData(Metadata* meta) {
 
 		if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
 
-			string file_uri = WriteImageData(e->filename, e->image_data);
+			string file_uri = "";
+			if (e->value_type == METADATA_VALUE_TYPE_IMAGE)
+				file_uri = WriteImageData(e->filename, &e->image_data[0], e->image_data.size());
+			else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float")
+				file_uri = WriteImageData(e->filename, (uint8_t*)&e->float_raw_data[0], e->float_raw_data.size() * 4);
+			else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8")
+				file_uri = WriteImageData(e->filename, &e->uint8_raw_data[0], e->uint8_raw_data.size());
+			
+			// We were unable to write the image to disk, fail this record
+			if (file_uri == "") {
+				return "";
+			}
 			e->file_uri = file_uri;
 		}
 
@@ -207,18 +209,10 @@ string CsvWriter::WriteData(Metadata* meta) {
 
 	mSetFile[meta->type] << output_line << endl;
 
-	MD5((unsigned char *)output_line.c_str(), output_line.size(), md5result);
-
-	char buf[33];
-	for (int i=0; i<16; i++)
-		sprintf(buf+i*2, "%02x", md5result[i]);
-
-	buf[32]=0;
-
-	return "file=" + meta->type + ".txt;hash=" + string(buf);
+	return "file=" + meta->type + ".txt;hash=" + md5(output_line);
 }
 
-string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
+string CsvWriter::WriteImageData(string filename, uint8_t* image_data, unsigned int len) {
 
 	string path = mBasePath + "data/";
 
@@ -242,9 +236,22 @@ string CsvWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
 		}
 	}
 
+	// extract the base from the filename
+	string base_part = filename.substr(0,filename.find_first_of("."));
+	
+	MD5 c_md5 = MD5();
+	c_md5.update(image_data, len);
+	c_md5.finalize();
+	string digest = c_md5.hexdigest();
+
+	if (base_part != digest) {
+		LOG(ERROR) << "Filename hash does not match contents for " << filename;
+		return "";
+	}
+
 	ofstream image_file;
 	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
-	image_file.write((char *)&image_data[0], image_data.size());
+	image_file.write((char *)image_data, len);
 	image_file.close();		
 
 	mImagesWritten++;

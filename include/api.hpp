@@ -98,11 +98,17 @@ struct Metadata{
 
 #include "datawriter.hpp"
 
+extern deque<vector<Metadata* >> feed_readahead;
+extern mutex feed_mutex;
+
 int InitializeApi();
 DatasetMetadata* GetDatasetMetadata(string job_id);
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
 vector<Metadata* > ParseFeed(const char* feed);
 vector<MetadataEntry* > ParseTarFeed(const char* feed);
 Metadata* ParseDataEntry(const Value& entryObj, Metadata* meta_output);
+void ReadaheadBatch(map<string,string> options, int batch_idx);
+void StartFeedThread(map<string,string> options, int batch_idx);
+void StopFeedThread();
 
 #endif

@@ -26,10 +26,10 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+#include "api.hpp"
 #include "easylogging++.h"
 #include "globals.hpp"
 #include "md5.hpp"
-#include "api.hpp"
 #include "optionparser.h"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
@@ -39,6 +39,10 @@ using namespace std;
 using namespace rapidjson;
 
 extern DatasetMetadata* gDatasetMeta;
+deque<vector<Metadata* >> feed_readahead;
+mutex feed_mutex;
+thread th_readahead;
+bool gTerminateReadahead;
 
 int InitializeApi() {
 
@@ -190,6 +194,53 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 	return meta;
 }
 
+void StartFeedThread(map<string,string> options, int batch_idx) {
+	
+	gTerminateReadahead = false;
+
+	LOG(INFO) << "Starting feed readahead thread";
+	th_readahead = thread(ReadaheadBatch, options, batch_idx);	
+}
+
+void StopFeedThread() {
+
+	gTerminateReadahead = true;
+
+	LOG(DEBUG) << "Waiting for feed readahead thread to exit";
+	th_readahead.join();
+}
+
+void ReadaheadBatch(map<string,string> options, int batch_idx) {
+
+	do {
+
+		vector<Metadata* > feed = FetchBatch(options, batch_idx);
+
+		if (feed.size() == 0) {
+			LOG(DEBUG) << "Feed reader finished at batch_idx " << batch_idx;
+			return;
+		}
+
+		feed_mutex.lock();
+		{
+			// Loop until we have space to fetch more feeds
+			do {
+				if (feed_readahead.size() < 4)
+					break;
+				feed_mutex.unlock();
+				sleep(500);
+
+				feed_mutex.lock();
+			} while(gTerminateReadahead == false);
+
+			feed_readahead.push_back(feed);
+		}
+		feed_mutex.unlock();
+
+		batch_idx++;
+	} while(gTerminateReadahead == false);
+}
+
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 
 	vector<Metadata* > meta_vector;
@@ -235,7 +286,7 @@ vector<Metadata* > ParseFeed(const char* feed) {
 				Metadata* meta_record = new Metadata;
 
 				meta_record->skip_record = false;
-				
+
 				// Iterate through all object members
 				for (Value::ConstMemberIterator itr = obj.MemberBegin(); itr != obj.MemberEnd(); ++itr) {
 
