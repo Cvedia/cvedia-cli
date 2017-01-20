@@ -76,9 +76,11 @@ int MetaDb::NewDb(const string db_file) {
 
 		if (type == 'n' || type == 'N')
 			remove(db_file.c_str());
-		else {
+		else if (type == 'y' || type == 'Y') {
 			gResume = true;
 			return LoadDb(db_file);
+		} else {
+			return -1;
 		}
 	}
 

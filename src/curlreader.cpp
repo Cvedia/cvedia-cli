@@ -58,6 +58,7 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, CurlReader::WriteCallback);
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)req);
 	curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, (void *)req);
+	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 20L);
 
 	// Execute a single synchronous fetch
 	int err = curl_easy_perform(curl_handle);
@@ -168,6 +169,7 @@ void CurlReader::WorkerThread() {
 				curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, CurlReader::WriteCallback);
 				curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)req);
 				curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, (void *)req);
+				curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 20L);
 				
 				curl_multi_add_handle(mMultiHandle, curl_handle);
 				 

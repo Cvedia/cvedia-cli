@@ -39,6 +39,7 @@ using namespace std;
 using namespace rapidjson;
 
 extern DatasetMetadata* gDatasetMeta;
+extern string gWorkingDir;
 deque<vector<Metadata* >> feed_readahead;
 mutex feed_mutex;
 thread th_readahead;
@@ -228,7 +229,7 @@ void ReadaheadBatch(map<string,string> options, int batch_idx) {
 				if (feed_readahead.size() < 4)
 					break;
 				feed_mutex.unlock();
-				sleep(500);
+				sleep(1);
 
 				feed_mutex.lock();
 			} while(gTerminateReadahead == false);
@@ -258,6 +259,8 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 		string data_str( req->read_data.begin(), req->read_data.end() );
 		meta_vector = ParseFeed(data_str.c_str());
 	}
+
+	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes from API";
 
 	return meta_vector;
 }
@@ -336,6 +339,51 @@ vector<Metadata* > ParseFeed(const char* feed) {
 	LOG(ERROR) << "ParseFeed() Error parsing JSON data";
 	meta_vector.clear();
 	return meta_vector;
+}
+
+string WriteImageData(string filename, uint8_t* image_data, unsigned int len, bool dir_tree) {
+
+	string path = gWorkingDir + "data/";
+
+	int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	if (dir_err == -1 && errno != EEXIST) {
+		LOG(ERROR) << "Could not create directory: " << path;
+		return "";
+	}
+
+	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
+	if (filename.size() > 7 && dir_tree == true) {
+
+		for (int i = 0; i < 3; ++i) {
+			path += filename.substr(i,1) + "/";
+
+			int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+			if (dir_err == -1 && errno != EEXIST) {
+				LOG(ERROR) << "Could not create directory: " << path;
+				return "";
+			}
+		}
+	}
+
+	// extract the base from the filename
+	string base_part = filename.substr(0,filename.find_first_of("."));
+	
+	MD5 c_md5 = MD5();
+	c_md5.update(image_data, len);
+	c_md5.finalize();
+	string digest = c_md5.hexdigest();
+
+	if (base_part != digest) {
+		LOG(ERROR) << "Filename hash does not match contents for " << filename;
+		return "";
+	}
+
+	ofstream image_file;
+	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
+	image_file.write((char *)image_data, len);
+	image_file.close();		
+
+	return path + filename;
 }
 
 vector<MetadataEntry* > ParseTarFeed(const char* feed) {

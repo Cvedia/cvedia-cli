@@ -63,7 +63,19 @@ void PythonWriter::ClearStats() {
 	mCsvStats = {};
 }
 
-int PythonWriter::Initialize(DatasetMetadata* dataset_meta, bool resume) {
+bool PythonWriter::CanHandle(string support) {
+
+	if (support == "resume")
+		return true;
+	if (support == "integrity")
+		return true;
+	if (support == "blobs")
+		return true;
+
+	return false;
+}
+
+int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 
 	dlopen("libpython3.5m.so", RTLD_NOW | RTLD_GLOBAL);
 	Py_InitializeEx(0);
@@ -176,17 +188,12 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, bool resume) {
 	return 0;
 }
 
-bool PythonWriter::ValidateData(vector<Metadata* > meta) {
-
-	return true;
-}
-
-int PythonWriter::BeginWriting(DatasetMetadata* dataset_meta) {
+int PythonWriter::BeginWriting() {
 
 	return 0;
 }
 
-int PythonWriter::EndWriting(DatasetMetadata* dataset_meta) {
+int PythonWriter::EndWriting() {
 
 	return 0;
 }
@@ -216,7 +223,7 @@ int PythonWriter::Finalize() {
 	return 0;
 }
 
-string PythonWriter::VerifyData(string file_name, DatasetMetadata* dataset_meta) {
+string PythonWriter::CheckIntegrity(string file_name) {
 
 	return "";
 }

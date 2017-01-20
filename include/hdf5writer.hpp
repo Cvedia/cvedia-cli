@@ -26,6 +26,7 @@ public:
 	WriterStats GetStats();
 	void ClearStats();
 	
+	virtual int Initialize(DatasetMetadata* dataset_meta, int mode);
 	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta);
 	
 	virtual int Initialize(DatasetMetadata* dataset_meta, bool resume);

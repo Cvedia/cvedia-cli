@@ -102,6 +102,7 @@ extern deque<vector<Metadata* >> feed_readahead;
 extern mutex feed_mutex;
 
 int InitializeApi();
+string WriteImageData(string filename, uint8_t* image_data, unsigned int len, bool dir_tree);
 DatasetMetadata* GetDatasetMetadata(string job_id);
 vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
 vector<Metadata* > ParseFeed(const char* feed);

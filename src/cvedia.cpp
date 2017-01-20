@@ -67,6 +67,7 @@ bool gVerifyApi = false;
 bool gVerifyLocal = false;
 string gBaseDir = "";
 string gExportName = "";
+string gWorkingDir = "";
 el::Level gLogLevel;
 string gApiUrl = "http://api.cvedia.com/";
 string gOutputFormat = "csv";
@@ -147,7 +148,7 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." });
 	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." });
 	usage_vec.push_back({API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  });
-	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore the images as files on disk instead of inside the output format. This option might be overridden by the output module" });
+	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore images/blobs as files on disk. This is default for output formats that dont support binary storage" });
 	usage_vec.push_back({IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." });
 
 	// Insert the python modules with their options
@@ -219,6 +220,10 @@ int main(int argc, char* argv[]) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 	
+	if (options[IMAGES_EXTERNAL].count() == 1) {
+		mod_options["images-external"] = "1";
+	}
+
 	if (options[IMAGES_SAME_DIR].count() == 1) {
 		mod_options["images-same-dir"] = "1";
 	}
@@ -265,9 +270,11 @@ int main(int argc, char* argv[]) {
 	else
 		gBaseDir += "/";
 
+	gWorkingDir = gBaseDir + gExportName + "/";
+
 	mod_options["base_dir"] = gBaseDir;
 	mod_options["export_name"] = gExportName;
-	mod_options["working_dir"] = gBaseDir + gExportName + "/";
+	mod_options["working_dir"] = gWorkingDir;
 
 	int dir_err = mkdir(mod_options["working_dir"].c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
@@ -317,6 +324,9 @@ int StartExport(map<string,string> options) {
 
 	if (gResume == false) {
 		int rc = p_mdb->NewDb(options["working_dir"] + "/" + gJobID + ".db");
+
+		if (rc == -1)
+			return -1;
 
 		p_mdb->InsertMeta("api_version", gAPIVersion);
 		p_mdb->InsertMeta("cli_version", gVersion);
@@ -368,6 +378,14 @@ int StartExport(map<string,string> options) {
 		return -1;
 	}
 
+	bool can_resume = p_writer->CanHandle("resume");
+	bool can_store_blobs = p_writer->CanHandle("blobs");
+
+	if (!can_resume && gResume == true) {
+		LOG(ERROR) << "Resume not supported by output module";
+		return -1;
+	}
+
 	LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
 
 	// Fetch basic stats on export
@@ -380,6 +398,12 @@ int StartExport(map<string,string> options) {
 		unsigned int queued_downloads = 0;
 
 		vector<Metadata* > meta_data;
+
+		feed_mutex.lock();
+		if (batch_idx > 0 && feed_readahead.size() == 0) {
+			LOG(INFO) << "Readahead feed empty.. waiting for data.";
+		}
+		feed_mutex.unlock();
 
 		do {
 
@@ -396,7 +420,7 @@ int StartExport(map<string,string> options) {
 			feed_mutex.unlock();
 
 			// Wait for new data to come in
-			usleep(500);
+			usleep(100000);
 
 		} while(1);
 
@@ -545,7 +569,11 @@ int StartExport(map<string,string> options) {
 
 						if (file_id == NULL) {
 							LOG(ERROR) << entry->url << " did not contain a file_id.diz";
-							return -1;
+
+							skip_meta_entry = true;
+							m->skip_record = true;	// Skip this record
+
+							continue;
 						}
 
 						// Make sure we NULL terminate the text file
@@ -596,20 +624,15 @@ int StartExport(map<string,string> options) {
 
 		meta_data.clear();
 
-		bool is_valid = p_writer->ValidateData(meta_data_unpacked);
-		if (!is_valid) {
-			LOG(ERROR) << "DataWriter returned false on ValidateData";
-			return -1;
-		}
-
 		int to_write = meta_data_unpacked.size();
 		int cur_write = 0;
 
-		if (p_writer->BeginWriting(gDatasetMeta) != 0) {
+		if (p_writer->BeginWriting() != 0) {
 			LOG(ERROR) << "BeginWriting() failed ";
 			return -1;
 		}
 
+		// Iterate over the metadata a final time while calling the WriteData on the storage module
 		for (Metadata* m : meta_data_unpacked) {
 
 			if (time(NULL) != seconds) {
@@ -618,38 +641,65 @@ int StartExport(map<string,string> options) {
 				seconds = time(NULL);
 			}
 
-			string writer_res = p_writer->WriteData(m);
+			// If the module doesnt support blobs or images-external is forced we first store
+			// the data on disk and only pass the file_uri to the output modules
+			if (options["images-external"] != "" || !can_store_blobs) {
+				// Loop through individual fields to find any image/raw to store on disk
+				for (MetadataEntry* e : m->entries) {
+					if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
 
-			// Tokenize the output from the writer. Key=Value;Key=Value...
-			map<string, string> keyval_map;
+						string file_uri = "";
+						if (e->value_type == METADATA_VALUE_TYPE_IMAGE)
+							file_uri = WriteImageData(e->filename, &e->image_data[0], e->image_data.size(), true);
+						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float")
+							file_uri = WriteImageData(e->filename, (uint8_t*)&e->float_raw_data[0], e->float_raw_data.size() * 4, true);
+						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8")
+							file_uri = WriteImageData(e->filename, &e->uint8_raw_data[0], e->uint8_raw_data.size(), true);
+						
+						// We were unable to write the image to disk, fail this record
+						if (file_uri == "") {
+							m->skip_record = true;
+						}
 
-			for (const string& tag : split(writer_res, ';')) {
-				auto key_val = split(tag, '=');
-				keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+						e->file_uri = file_uri;
+					}
+				}
 			}
 
-			string record_hash = keyval_map["hash"];
-			if (record_hash == "") {
-				LOG(ERROR) << "WriteData returned empty hash";
-				return -1;
+			if (!m->skip_record) {
+				string writer_res = p_writer->WriteData(m);
+
+				// Tokenize the output from the writer. Key=Value;Key=Value...
+				map<string, string> keyval_map;
+
+				for (const string& tag : split(writer_res, ';')) {
+					auto key_val = split(tag, '=');
+					keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+				}
+
+				string record_hash = keyval_map["hash"];
+				if (record_hash == "") {
+					LOG(ERROR) << "WriteData returned empty hash";
+					return -1;
+				}
+
+				// Store the filename in the meta db. 
+				string file_name = keyval_map["file"];
+				int file_id = 0;
+
+				if (file_name != "") {
+					// Generate a fileid or return an existing one
+					file_id = p_mdb->GetFileId(file_name);
+				}
+
+				// Insert the API and record hash into the meta db
+				p_mdb->InsertHash(file_id, m->hash, record_hash);
 			}
-
-			// Store the filename in the meta db. 
-			string file_name = keyval_map["file"];
-			int file_id = 0;
-
-			if (file_name != "") {
-				// Generate a fileid or return an existing one
-				file_id = p_mdb->GetFileId(file_name);
-			}
-
-			// Insert the API and record hash into the meta db
-			p_mdb->InsertHash(file_id, m->hash, record_hash);
 
 			cur_write++;
 		}
 
-		if (p_writer->EndWriting(gDatasetMeta) != 0) {
+		if (p_writer->EndWriting() != 0) {
 			LOG(ERROR) << "EndWriting() failed ";
 			return -1;
 		}
@@ -671,7 +721,7 @@ int StartExport(map<string,string> options) {
 	p_writer->Finalize();
 
 	StopFeedThread();
-	
+
 	return 0;
 }
 
@@ -725,7 +775,7 @@ int VerifyLocal(map<string,string> options) {
 			// Tokenize the output from the writer. Key=Value;Key=Value...
 			map<string, string> keyval_map;
 
-			string writer_res = p_writer->VerifyData(file, gDatasetMeta);
+			string writer_res = p_writer->CheckIntegrity(file);
 
 			for (const string& tag : split(writer_res, ';')) {
 				auto key_val = split(tag, '=');
