@@ -46,7 +46,9 @@ private:
 	PyGILState_STATE gstate;
 
 	PyObject* pInitFn;
+	PyObject* pBeginWritingFn;
 	PyObject* pWriteFn;
+	PyObject* pEndWritingFn;
 	PyObject* pFinalFn;
 
 	virtual string PrepareData(Metadata* meta);
@@ -56,15 +58,6 @@ private:
 	WriterStats mCsvStats;
 
 	bool mInitialized;
-
-	bool mCreateTrainFile;
-	bool mCreateTestFile;
-	bool mCreateValFile;
-
-	// The TFRecord files
-	ofstream mTrainFile;
-	ofstream mTestFile;
-	ofstream mValidateFile;
 };
 
 #endif

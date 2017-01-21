@@ -89,7 +89,7 @@ struct MetadataEntry {
 
 struct Metadata{
 
-	string type;
+	string setname;
 	string hash;
 	bool skip_record;
 

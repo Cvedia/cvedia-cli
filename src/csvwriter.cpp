@@ -160,9 +160,9 @@ string CsvWriter::WriteData(Metadata* meta) {
 		output_line += (output_line != "" ? " " : "") + output_values[mapping->id];
 	}
 
-	mSetFile[meta->type] << output_line << endl;
+	mSetFile[meta->setname] << output_line << endl;
 
-	return "file=" + meta->type + ".txt;hash=" + md5(output_line);
+	return "file=" + meta->setname + ".txt;hash=" + md5(output_line);
 }
 
 int CsvWriter::EndWriting() {

@@ -297,7 +297,7 @@ vector<Metadata* > ParseFeed(const char* feed) {
 
 					// Couple of key members that are required and processed seperately
 					if (key == "set") {
-						meta_record->type = itr->value.GetString();
+						meta_record->setname = itr->value.GetString();
 					} else if (key == "data") {
 
 						if (itr->value.IsArray()) {

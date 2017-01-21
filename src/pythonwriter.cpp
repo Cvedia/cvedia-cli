@@ -39,17 +39,6 @@ PythonWriter::PythonWriter(string export_name, map<string, string> options) {
 
 PythonWriter::~PythonWriter() {
 
-//	PyGILState_Release(gstate);
-
-	if (mTrainFile.is_open()) {
-		mTrainFile.close();
-	}
-	if (mTestFile.is_open()) {
-		mTestFile.close();
-	}
-	if (mValidateFile.is_open()) {
-		mValidateFile.close();
-	}
 }
 
 WriterStats PythonWriter::GetStats() {
@@ -121,6 +110,22 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 		return -1;
 	}
 
+    // Find the begin_writing function
+	pBeginWritingFn = PyObject_GetAttrString(pModule ,"begin_writing");
+	if (pBeginWritingFn == NULL) {
+		PyErr_PrintEx(0);
+        LOG(ERROR) << "Could not find 'begin_writing' def in Python script";
+		return -1;
+	}
+
+    // Find the end_writing function
+	pEndWritingFn = PyObject_GetAttrString(pModule ,"end_writing");
+	if (pEndWritingFn == NULL) {
+		PyErr_PrintEx(0);
+        LOG(ERROR) << "Could not find 'end_writing' def in Python script";
+		return -1;
+	}
+
 	// Find the write function
 	pWriteFn = PyObject_GetAttrString(pModule ,"write_data");
 	if (pWriteFn == NULL) {
@@ -138,30 +143,74 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	}
 	
 	// Hold on to these for later
+	Py_XINCREF(pBeginWritingFn);
 	Py_XINCREF(pWriteFn);
+	Py_XINCREF(pEndWritingFn);
 	Py_XINCREF(pFinalFn);
 
     Py_XDECREF(pModule);
 
 	mBasePath = mModuleOptions["working_dir"];
 
-    PyObject* dict = PyDict_New();
+    PyObject* dict_module_options = PyDict_New();
+    PyObject* dict_meta = PyDict_New();
     vector<PyObject* > pyObjs;
+	PyObject* pySetList = PyList_New(0);
+	PyObject* pyFieldList = PyList_New(0);
+
+	// Build a list of all DatasetMetadata
+    for (auto const& entry : dataset_meta->mapping_by_id) {
+	    PyObject* dict_field = PyDict_New();
+
+    	PyObject* id_key = PyUnicode_FromString("id");
+    	PyObject* id_value = PyLong_FromLong(entry->id);
+
+    	PyObject* name_key = PyUnicode_FromString("name");
+    	PyObject* name_value = PyUnicode_FromString(entry->name.c_str());
+
+		PyDict_SetItem(dict_field, name_key, name_value);
+		PyDict_SetItem(dict_field, id_key, id_value);
+
+		PyList_Append(pyFieldList, dict_field);
+
+		pyObjs.push_back(dict_field);
+		pyObjs.push_back(id_key);
+		pyObjs.push_back(id_value);
+		pyObjs.push_back(name_key);
+		pyObjs.push_back(name_value);
+    }
+
+	// Build a list of all DatasetMetadata
+    for (auto const& entry : dataset_meta->sets) {
+    	PyObject* set_name = PyUnicode_FromString(entry.set_name.c_str());
+		PyList_Append(pySetList, set_name);
+		pyObjs.push_back(set_name);
+    }
 
     // Convert our std::map to a python dictionary
     for (auto const& entry : mModuleOptions) {
     	PyObject* key = PyUnicode_FromString(entry.first.c_str());
     	PyObject* val = PyUnicode_FromString(entry.second.c_str());
 
-		PyDict_SetItem(dict, key, val);
+		PyDict_SetItem(dict_module_options, key, val);
 
 		pyObjs.push_back(key);
 		pyObjs.push_back(val);
 	}
 
+	// Add Sets to a 'sets' dictionary
+	PyObject* sets_key = PyUnicode_FromString("sets");
+	PyObject* fields_key = PyUnicode_FromString("fields");
+	pyObjs.push_back(sets_key);
+	pyObjs.push_back(fields_key);
+	PyDict_SetItem(dict_meta, sets_key, pySetList);
+	PyDict_SetItem(dict_meta, fields_key, pyFieldList);
+
 	// Put dictionary in a tuple
-	PyObject* pTuple = PyTuple_New(1);
-	PyTuple_SetItem( pTuple, 0, dict);
+	PyObject* pTuple = PyTuple_New(3);
+	PyTuple_SetItem( pTuple, 0, dict_module_options);
+	PyTuple_SetItem( pTuple, 1, dict_meta);
+	PyTuple_SetItem( pTuple, 2, PyLong_FromLong(MODE_NEW));
 	Py_XINCREF(pTuple);
 
 	// Call the initialize function of our python script
@@ -175,7 +224,7 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	Py_XDECREF(pInitFn);
 	Py_XDECREF(rslt);
 	Py_XDECREF(pTuple);
-	Py_XDECREF(dict);
+	Py_XDECREF(dict_module_options);
 
 	// Objects are no longer required
 	for (PyObject* obj : pyObjs)
@@ -184,16 +233,6 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	mInitialized = 1;
 
 //	PyGILState_Release(gstate);
-
-	return 0;
-}
-
-int PythonWriter::BeginWriting() {
-
-	return 0;
-}
-
-int PythonWriter::EndWriting() {
 
 	return 0;
 }
@@ -228,34 +267,32 @@ string PythonWriter::CheckIntegrity(string file_name) {
 	return "";
 }
 
+int PythonWriter::BeginWriting() {
+
+	// Call the begin_writing function of our python script
+	PyObject* rslt = PyObject_CallObject(pBeginWritingFn, NULL);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return -1;
+	}
+
+	return 0;
+}
+
 string PythonWriter::WriteData(Metadata* meta) {
+
+	string result = "";
 
 	if (!mInitialized) {
 		LOG(ERROR) << "Must call Initialize() first";
 		return "";
 	}
 
-	MetadataEntry* source = NULL;
+    PyObject* pyMetaentry = PyList_New(0);
+    PyObject* entry_dict = PyDict_New();
 
-	for (MetadataEntry* e : meta->entries) {
-		if (e->meta_type == METADATA_TYPE_SOURCE)
-			source = e;		
-	}
-
-	if (mModuleOptions.count("images-external")) {
-		string file_uri = WriteImageData(source->filename, source->image_data);
-		source->file_uri = file_uri;
-	}
-
-    PyObject* dict = PyDict_New();
-
-    PyObject* pyListSource = PyList_New(0);
-    PyObject* pyListGround = PyList_New(0);
-
-	PyObject* pTuple = PyTuple_New(3);
-
-	AddToDict(dict, PyUnicode_FromString("type"), PyUnicode_FromString(meta->type.c_str()));
-	PyTuple_SetItem(pTuple, 0, dict);
+	PyObject* pTuple = PyTuple_New(1);
 
 	for (MetadataEntry* e : meta->entries) {
 	    PyObject* meta_dict = PyDict_New();
@@ -313,6 +350,12 @@ string PythonWriter::WriteData(Metadata* meta) {
 				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
 				return "";				
 			}
+		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
+			AddToDict(meta_dict, PyUnicode_FromString("value"), PyUnicode_FromString(e->string_value[0].c_str()));
+		}
+
+		if (e->id > -1) {
+			AddToDict(meta_dict, PyUnicode_FromString("id"), PyLong_FromLong(e->id));
 		}
 
 		if (e->dtype != "") {
@@ -327,21 +370,15 @@ string PythonWriter::WriteData(Metadata* meta) {
 			AddToDict(meta_dict, PyUnicode_FromString("filename"), PyUnicode_FromString(e->filename.c_str()));
 		}
 
-		if (e->meta_type == METADATA_TYPE_SOURCE)
-			PyList_Append(pyListSource, meta_dict);
-		else if (e->meta_type == METADATA_TYPE_GROUND)
-			PyList_Append(pyListGround, meta_dict);
-		else {
-			LOG(ERROR) << "Unsupported meta_type encountered: " << e->meta_type;
-			return "";			
-		}
-	
+		PyList_Append(pyMetaentry, meta_dict);
 		Py_XDECREF(meta_dict);
 	}
 
+	AddToDict(entry_dict, PyUnicode_FromString("set"), PyUnicode_FromString(meta->setname.c_str()));
+	AddToDict(entry_dict, PyUnicode_FromString("entries"), pyMetaentry);
+
 	// Store the 2nd and 3rd argument
-	PyTuple_SetItem(pTuple, 1, pyListSource);
-	PyTuple_SetItem(pTuple, 2, pyListGround);
+	PyTuple_SetItem(pTuple, 0, entry_dict);
 
 	// Call the initialize function of our python script
 	PyObject* rslt = PyObject_CallObject(pWriteFn, pTuple);
@@ -353,15 +390,32 @@ string PythonWriter::WriteData(Metadata* meta) {
 		return "";
 	}
 
-	if (!PyObject_IsTrue(rslt)) {
+	if (!rslt) {
 		Py_XDECREF(rslt);
 		LOG(ERROR) << "Call to Python function 'write_data' failed";
 		return "";
+	} else {
+		PyObject* ascii_result = PyUnicode_AsASCIIString(rslt);
+		result = PyBytes_AsString(ascii_result);
+		Py_DECREF(ascii_result);		
 	}
 
 	Py_XDECREF(rslt);
 
-	return "";
+	return result;
+}
+
+int PythonWriter::EndWriting() {
+
+	// Call the end_writing function of our python script
+	PyObject* rslt = PyObject_CallObject(pEndWritingFn, NULL);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return -1;
+	}
+
+	return 0;
 }
 
 void PythonWriter::AddToDict(PyObject* dict, PyObject* key, PyObject* val) {
@@ -369,40 +423,6 @@ void PythonWriter::AddToDict(PyObject* dict, PyObject* key, PyObject* val) {
 	PyDict_SetItem(dict, key, val);
 	Py_XDECREF(key);
 	Py_XDECREF(val);
-}
-
-string PythonWriter::WriteImageData(string filename, vector<uint8_t> image_data) {
-
-	string path = mBasePath + "data/";
-
-	int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-	if (dir_err == -1 && errno != EEXIST) {
-		LOG(ERROR) << "Could not create directory: " << path;
-		return "";
-	}
-
-	// Must be at least 7 chars long for directory splitting (3 chars + 4 for extension)
-	if (filename.size() > 7 && mModuleOptions.count("images-same-dir") == 0) {
-
-		for (int i = 0; i < 3; ++i) {
-			path += filename.substr(i,1) + "/";
-
-			int dir_err = mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-			if (dir_err == -1 && errno != EEXIST) {
-				LOG(ERROR) << "Could not create directory: " << path;
-				return "";
-			}
-		}
-	}
-
-	ofstream image_file;
-	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
-	image_file.write((char *)&image_data[0], image_data.size());
-	image_file.close();		
-
-	mImagesWritten++;
-	
-	return path + filename;
 }
 
 #endif
