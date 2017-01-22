@@ -46,9 +46,11 @@ private:
 	PyGILState_STATE gstate;
 
 	PyObject* pInitFn;
+	PyObject* pCanHandleFn;
 	PyObject* pBeginWritingFn;
 	PyObject* pWriteFn;
 	PyObject* pEndWritingFn;
+	PyObject* pCheckIntegrityFn;
 	PyObject* pFinalFn;
 
 	virtual string PrepareData(Metadata* meta);

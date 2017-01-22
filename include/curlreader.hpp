@@ -1,6 +1,8 @@
 #ifndef _CURLREADER_HPP
 #define _CURLREADER_HPP
 
+#define MAX_RETRIES 3
+
 #include <mutex>
 #include <thread>
 #include <curl/curl.h>

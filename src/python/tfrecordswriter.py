@@ -10,6 +10,9 @@ else:
 	import imp
 	imp.find_module('tensorflow')
 
+cur_filename = None
+file_itr = None
+
 def _float_feature(value):
 	return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
 
@@ -32,18 +35,33 @@ def load_module():
 
 	return mod
 
+def can_handle(feature):
+
+	if feature == "resume":
+		return True
+	if feature == "blobs":
+		return True
+	if feature == "integrity":
+		return True
+
+	return False
+
 def initialize(options, dataset_meta, mode):
 	global writer
 	global output_fields
+	global g_options
 
 	writer = {}
 	output_fields = {}
+	g_options = options
 
 	for field in dataset_meta['fields']:
 		output_fields[field['id']] = field['name']
 
-	for dataset in dataset_meta['sets']:
-		writer[dataset] = tf.python_io.TFRecordWriter(options["working_dir"] + dataset + ".tfr")
+	# Only create new TFR files if we are in MODE_NEW
+	if mode == 0:
+		for dataset in dataset_meta['sets']:
+			writer[dataset] = tf.python_io.TFRecordWriter(options["working_dir"] + dataset + ".tfr")
 
 	return True
 
@@ -87,6 +105,25 @@ def write_data(entry):
 	m.update(data)
 
 	return "file=" + entry['set'] + ".tfr;hash=" + m.hexdigest()
+
+def check_integrity(filename):
+
+	global file_itr
+	global cur_filename
+	global g_options
+
+	if cur_filename != filename:
+		cur_filename = filename
+		file_itr = tf.python_io.tf_record_iterator(g_options["working_dir"] + filename)
+
+	for record in file_itr:
+
+		m = hashlib.md5()
+		m.update(record)
+
+		return "hash=" + m.hexdigest()
+
+	return "result=eof"
 
 def end_writing():
 	return True

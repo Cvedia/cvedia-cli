@@ -49,7 +49,7 @@ CurlReader::~CurlReader() {
 ReadRequest* CurlReader::RequestUrl(string url) {
 
 	ReadRequest* req = new ReadRequest;
-
+	req->retry_count = 0;
 	req->url = url;
 
 	// Setup curl object
@@ -88,6 +88,7 @@ void CurlReader::QueueUrl(string id, string url) {
 		return;
 	}
 
+	request->retry_count = 0;
 	request->id = id;
 	request->url = url;
 
@@ -239,17 +240,44 @@ void CurlReader::WorkerThread() {
 			
 			if (p_msg->msg == CURLMSG_DONE) {
 				
-				if (req->read_data.size() > 0) {
+				if (p_msg->data.result == CURLE_OK) {
+					if (req->read_data.size() > 0) {
 
-					req->status = 0;
+						req->status = 0;
 
-					mCurlStats.bytes_read += req->read_data.size();
+						mCurlStats.bytes_read += req->read_data.size();
 
-					mCurlStats.num_reads_success++;
-				} else {
-					req->status = -1;
+						mCurlStats.num_reads_success++;
+					} else {
+						req->status = -1;
 
-					mCurlStats.num_reads_empty++;
+						mCurlStats.num_reads_empty++;
+					}
+				} else if (p_msg->data.result == CURLE_OPERATION_TIMEDOUT) {
+					// Transfer or request timed out
+					if (req->retry_count < MAX_RETRIES) {
+
+						// Clear any remains of the download attempt. Clear curl handles
+						// and push request onto the request stack again. Keep trying MAX_RETRIES times
+						req->read_data.clear();
+						req->status = 0;
+						req->retry_count++;
+						curl_multi_remove_handle(mMultiHandle, p_msg->easy_handle);
+						curl_easy_cleanup(p_msg->easy_handle);
+
+						mRequestsMutex.lock();
+						{
+							// Add request again to the queue
+							mRequests.push_back(req);
+						}
+						mRequestsMutex.unlock();
+
+						LOG(DEBUG) << "Retrying " << req->url << " (" << req->retry_count << ")";
+
+						continue;
+					} else {
+						mCurlStats.num_reads_error++;						
+					}
 				}
 			} else {
 				req->status = -1;

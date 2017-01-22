@@ -54,14 +54,28 @@ void PythonWriter::ClearStats() {
 
 bool PythonWriter::CanHandle(string support) {
 
-	if (support == "resume")
-		return true;
-	if (support == "integrity")
-		return true;
-	if (support == "blobs")
-		return true;
+	bool can_handle = false;
+	PyObject* pTuple = PyTuple_New(1);
+	PyObject* feat = PyUnicode_FromString(support.c_str());
 
-	return false;
+	PyTuple_SetItem(pTuple, 0, feat);
+
+	// Call the can_handle function of our python script
+	PyObject* rslt = PyObject_CallObject(pCanHandleFn, pTuple);
+
+	Py_XDECREF(pTuple);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return false;
+	}
+
+	if (PyObject_IsTrue(rslt))
+		can_handle = true;
+
+	Py_XDECREF(rslt);
+
+	return can_handle;
 }
 
 int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
@@ -110,6 +124,14 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 		return -1;
 	}
 
+    // Find the initialize function
+	pCanHandleFn = PyObject_GetAttrString(pModule ,"can_handle");
+	if (pCanHandleFn == NULL) {
+		PyErr_PrintEx(0);
+        LOG(ERROR) << "Could not find 'can_handle' def in Python script";
+		return -1;
+	}
+
     // Find the begin_writing function
 	pBeginWritingFn = PyObject_GetAttrString(pModule ,"begin_writing");
 	if (pBeginWritingFn == NULL) {
@@ -132,6 +154,17 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 		PyErr_PrintEx(0);
         LOG(ERROR) << "Could not find 'write_data' def in Python script";
 		return -1;
+	}
+
+	// Find the check_integrity function
+	pCheckIntegrityFn = PyObject_GetAttrString(pModule ,"check_integrity");
+	if (pCheckIntegrityFn == NULL) {
+
+		if (CanHandle("integrity")) {
+			PyErr_PrintEx(0);
+	        LOG(ERROR) << "Could not find 'check_integrity' def in Python script";
+			return -1;
+		}
 	}
 
 	// Find the finalize function
@@ -210,7 +243,7 @@ int PythonWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	PyObject* pTuple = PyTuple_New(3);
 	PyTuple_SetItem( pTuple, 0, dict_module_options);
 	PyTuple_SetItem( pTuple, 1, dict_meta);
-	PyTuple_SetItem( pTuple, 2, PyLong_FromLong(MODE_NEW));
+	PyTuple_SetItem( pTuple, 2, PyLong_FromLong(mode));
 	Py_XINCREF(pTuple);
 
 	// Call the initialize function of our python script
@@ -264,7 +297,36 @@ int PythonWriter::Finalize() {
 
 string PythonWriter::CheckIntegrity(string file_name) {
 
-	return "";
+	string result = "";
+
+	PyObject* pTuple = PyTuple_New(1);
+	PyObject* fname = PyUnicode_FromString(file_name.c_str());
+
+	PyTuple_SetItem(pTuple, 0, fname);
+
+	// Call the initialize function of our python script
+	PyObject* rslt = PyObject_CallObject(pCheckIntegrityFn, pTuple);
+
+	Py_XDECREF(pTuple);
+
+	if (rslt == NULL) {
+		PyErr_PrintEx(0);
+		return "";
+	}
+
+	if (!rslt) {
+		Py_XDECREF(rslt);
+		LOG(ERROR) << "Call to Python function 'check_integrity' failed";
+		return "";
+	} else {
+		PyObject* ascii_result = PyUnicode_AsASCIIString(rslt);
+		result = PyBytes_AsString(ascii_result);
+		Py_DECREF(ascii_result);		
+	}
+
+	Py_XDECREF(rslt);
+
+	return result;
 }
 
 int PythonWriter::BeginWriting() {
@@ -276,6 +338,8 @@ int PythonWriter::BeginWriting() {
 		PyErr_PrintEx(0);
 		return -1;
 	}
+
+	Py_XDECREF(rslt);
 
 	return 0;
 }
@@ -351,6 +415,8 @@ string PythonWriter::WriteData(Metadata* meta) {
 				return "";				
 			}
 		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
+//			cout << "." << endl;
+//			cout << e->string_value[0].c_str() << endl;
 			AddToDict(meta_dict, PyUnicode_FromString("value"), PyUnicode_FromString(e->string_value[0].c_str()));
 		}
 
@@ -384,6 +450,7 @@ string PythonWriter::WriteData(Metadata* meta) {
 	PyObject* rslt = PyObject_CallObject(pWriteFn, pTuple);
 
 	Py_XDECREF(pTuple);
+	Py_XDECREF(pyMetaentry);
 
 	if (rslt == NULL) {
 		PyErr_PrintEx(0);
@@ -414,6 +481,8 @@ int PythonWriter::EndWriting() {
 		PyErr_PrintEx(0);
 		return -1;
 	}
+
+	Py_XDECREF(rslt);
 
 	return 0;
 }

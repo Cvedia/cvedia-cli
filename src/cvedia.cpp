@@ -76,7 +76,7 @@ string gJobID = "";
 string gVersion = CLI_VERSION;
 string gAPIVersion = API_VERSION;
 
-bool gResume = false;
+int gResume = MODE_NEW;
 
 void SigHandler(int s);
 bool gInterrupted = false;
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
 	}
 	
 	if (options[RESUME].count() == 1) {
-		gResume = true;
+		gResume = MODE_RESUME;
 	}
 
 	if (options[VERIFYAPI].count() == 1) {
@@ -322,7 +322,7 @@ int StartExport(map<string,string> options) {
 
 	MetaDb* p_mdb = new MetaDb();
 
-	if (gResume == false) {
+	if (gResume == MODE_NEW) {
 		int rc = p_mdb->NewDb(options["working_dir"] + "/" + gJobID + ".db");
 
 		if (rc == -1)
@@ -766,6 +766,11 @@ int VerifyLocal(map<string,string> options) {
 	int found_in_metadb = 0;		// Hash records in the storage output that match with the Meta Db
 	int not_found_in_metadb = 0;	// Hash records that are not found in the Meta Db
 
+	if (p_writer->Initialize(gDatasetMeta, MODE_VERIFY) != 0) {
+		LOG(ERROR) << "Failed to initialize " << gOutputFormat;
+		return -1;
+	}
+
 	for (string file : files) {
 		LOG(INFO) << file;
 
@@ -793,6 +798,9 @@ int VerifyLocal(map<string,string> options) {
 				} else {
 					not_found_in_metadb++;
 				}
+			} else {
+				LOG(ERROR) << "CheckIntegrity did not return a hash or EOF";
+				break;
 			}
 
 		} while (result != "eof");
