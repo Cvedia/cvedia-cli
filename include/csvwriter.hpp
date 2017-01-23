@@ -13,15 +13,19 @@ public:
 	CsvWriter() {};
 	~CsvWriter();
 
-	string WriteData(Metadata* meta);
-	string WriteImageData(string filename, vector<uint8_t> image_data);
-
 	WriterStats GetStats();
 	void ClearStats();
 	
-	virtual int BeginWriting(DatasetMetadata* dataset_meta);
-	virtual int EndWriting(DatasetMetadata* dataset_meta);
-	virtual int Initialize(DatasetMetadata* dataset_meta);
+	virtual bool CanHandle(string support);
+
+	virtual int Initialize(DatasetMetadata* dataset_meta, int mode);
+
+	virtual int BeginWriting();
+	virtual string WriteData(Metadata* meta);
+	virtual int EndWriting();
+
+	virtual string CheckIntegrity(string file_name);
+
 	virtual int Finalize();
 
 	string mBasePath;
@@ -34,12 +38,13 @@ public:
 
 private:
 
-	virtual bool ValidateData(vector<Metadata* > meta);
-
 	WriterStats mCsvStats;
 	DatasetMetadata* mDataset;
 
 	bool mInitialized;
+
+	string mVerifyFilename;
+	ifstream mVerifyFile;
 
 	map<string,ofstream> mSetFile;
 };

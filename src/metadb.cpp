@@ -21,6 +21,8 @@ using namespace std;
 #include "api.hpp"
 #include "metadb.hpp"
 
+extern bool gResume;
+
 /*
 metadata
 	key -> value
@@ -57,19 +59,40 @@ MetaDb::~MetaDb() {
 
 int MetaDb::NewDb(const string db_file) {
 
-	char *zErrMsg = 0;
-	char *sql;
+	char* zErrMsg = 0;
+	char* sql;
 
 	// Remove old db is one exists
-	remove(db_file.c_str());
+	struct stat buffer;   
+	bool exists = (stat(db_file.c_str(), &buffer) == 0); 
+
+	if (exists) {
+		char type;
+
+		do {
+			cout << "A MetaDb with the same Job ID already exists in this folder. Did you mean to resume? (y/N)" << endl;
+			cin >> type;
+		} while (!cin.fail() && type != 'y' && type != 'n' && type != 'Y' && type != 'N');			
+
+		if (type == 'n' || type == 'N')
+			remove(db_file.c_str());
+		else if (type == 'y' || type == 'Y') {
+			gResume = true;
+			return LoadDb(db_file);
+		} else {
+			return -1;
+		}
+	}
 
 	// Open database 
 	int rc = sqlite3_open(db_file.c_str(), &db);
 
 	// Create SQL statement
-	sql = "CREATE TABLE metadata (key varchar, value varchar);	\
-	CREATE TABLE hashes (api_hash BLOB, record_hash BLOB);	\
-	CREATE UNIQUE INDEX idx_api_hash ON hashes (api_hash);";
+	sql = "CREATE TABLE metadata (key VARCHAR, value VARCHAR);	\
+	CREATE TABLE hashes (file_id INTEGER, api_hash BLOB, record_hash BLOB);	\
+	CREATE TABLE files (file_id INTEGER PRIMARY KEY, file_name VARCHAR);	\
+	CREATE UNIQUE INDEX idx_api_hash ON hashes (api_hash);	\
+	CREATE INDEX idx_record_hash ON hashes (record_hash);";
 
 	// Execute SQL statement
 	rc = sqlite3_exec(db, sql, NULL, 0, &zErrMsg);
@@ -77,7 +100,7 @@ int MetaDb::NewDb(const string db_file) {
 		LOG(ERROR) << "SQL error: " << zErrMsg;
 		sqlite3_free(zErrMsg);
 	} else {
-		LOG(DEBUG) << "Table structure created";
+		LOG(INFO) << "New Meta Db created";
 	}
 
 	PrepareStatements();
@@ -91,13 +114,16 @@ void MetaDb::PrepareStatements() {
 	string sql = "SELECT COUNT(*) AS cnt FROM hashes WHERE api_hash = (?)";
 	sqlite3_prepare(db, sql.c_str(), -1, &stmt_api_hash_select, 0);
 
-	sql = "INSERT INTO hashes VALUES (?, ?)";
+	sql = "SELECT COUNT(*) AS cnt FROM hashes WHERE record_hash = (?)";
+	sqlite3_prepare(db, sql.c_str(), -1, &stmt_record_hash_select, 0);
+
+	sql = "INSERT INTO hashes VALUES (?, ?, ?)";
 	sqlite3_prepare(db, sql.c_str(), -1, &stmt_hash_insert, 0);
 }
 
 void MetaDb::SetPragmaOptions() {
 
-	char *zErrMsg = 0;
+	char* zErrMsg = 0;
 
 	sqlite3_exec(db, "PRAGMA synchronous=OFF", NULL, 0, &zErrMsg);
 }
@@ -119,16 +145,79 @@ int MetaDb::LoadDb(const string db_file) {
 		LOG(ERROR) << "Can't open database: " << sqlite3_errmsg(db);
 		return 0;
 	} else {
-		LOG(INFO) << "Loaded database " << db_file;
+		LOG(INFO) << "Loaded existing MetaDb database " << db_file;
 	}
 
 	PrepareStatements();
 	SetPragmaOptions();
-	
+
 	return 1;
 }
 
-void MetaDb::InsertHash(string api_hash, string record_hash) {
+int MetaDb::GetFileId(string file_name) {
+
+	int file_id;
+	sqlite3_stmt* stmt = NULL;
+
+	string sql = "SELECT file_id FROM files WHERE file_name = '" + file_name + "' LIMIT 1";
+
+	int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		LOG(ERROR) << "Failed to prepare " << sql;
+		return -1;
+	}
+
+	int rowCount = 0;
+	rc = sqlite3_step(stmt);
+
+	if (rc != SQLITE_DONE && rc != SQLITE_OK)
+	{
+		file_id = sqlite3_column_int(stmt, 0);
+	} else {
+		sqlite3_stmt* stmt_ins = NULL;
+
+		sql = "INSERT INTO files (file_name) VALUES ('" + file_name + "')";
+		sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt_ins, NULL);
+		sqlite3_step(stmt_ins);
+
+		file_id = sqlite3_last_insert_rowid(db);
+	}
+
+	rc = sqlite3_finalize(stmt);
+
+	return file_id;
+}
+
+vector<string> MetaDb::GetFileList() {
+
+	int file_id;
+	vector<string> files;
+	sqlite3_stmt* stmt = NULL;
+
+	string sql = "SELECT file_name FROM files";
+
+	int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		LOG(ERROR) << "Failed to prepare " << sql;
+		return files;
+	}
+
+	rc = sqlite3_step(stmt);
+
+	while (rc != SQLITE_DONE && rc != SQLITE_OK)
+	{
+		char* valChar = (char* )sqlite3_column_text(stmt, 0);
+		
+		string s = string(valChar);
+		files.push_back(s);
+
+		rc = sqlite3_step(stmt);
+	}
+
+	return files;
+}
+
+void MetaDb::InsertHash(int file_id, string api_hash, string record_hash) {
 
 	char* zErrMsg = 0;
 
@@ -152,8 +241,9 @@ void MetaDb::InsertHash(string api_hash, string record_hash) {
 		sscanf(&record_hash.c_str()[count], "%2hhx", &record_byte_hash[count/2]);
 	}
 
-	sqlite3_bind_blob(stmt_hash_insert, 1, api_byte_hash, api_len/2, SQLITE_STATIC);
-    sqlite3_bind_blob(stmt_hash_insert, 2, record_byte_hash, rec_len/2, SQLITE_STATIC);
+	sqlite3_bind_int(stmt_hash_insert, 1, file_id);
+	sqlite3_bind_blob(stmt_hash_insert, 2, api_byte_hash, api_len/2, SQLITE_STATIC);
+    sqlite3_bind_blob(stmt_hash_insert, 3, record_byte_hash, rec_len/2, SQLITE_STATIC);
 
     sqlite3_step(stmt_hash_insert);
 
@@ -174,9 +264,20 @@ void MetaDb::InsertMeta(string key, string value) {
 	}
 }
 
-bool MetaDb::HasApiHash(string hash) {
+bool MetaDb::ContainsHash(string hash, string field) {
 
 	int rec_count = 0;
+
+	sqlite3_stmt* stmt = NULL;
+
+	if (field == "api_hash")
+		stmt = stmt_api_hash_select;
+	else if (field == "record_hash")
+		stmt = stmt_record_hash_select;
+	else {
+		LOG(ERROR) << "Unsupported field " << field << " passed";
+		return false;
+	}
 
 	// Convert hashes to binary data
 	int hash_len = hash.size();
@@ -192,17 +293,17 @@ bool MetaDb::HasApiHash(string hash) {
 		sscanf(&hash.c_str()[count], "%2hhx", &byte_hash[count/2]);
 	}
 
-	sqlite3_bind_blob(stmt_api_hash_select, 1, byte_hash, hash_len/2, SQLITE_STATIC);
+	sqlite3_bind_blob(stmt, 1, byte_hash, hash_len/2, SQLITE_STATIC);
 
-	int rc = sqlite3_step(stmt_api_hash_select);
+	int rc = sqlite3_step(stmt);
 
 	if (rc == SQLITE_ROW)
 	{
-		rec_count = sqlite3_column_int(stmt_api_hash_select, 0);
+		rec_count = sqlite3_column_int(stmt, 0);
 	}
 
-	sqlite3_clear_bindings(stmt_api_hash_select);
-	sqlite3_reset(stmt_api_hash_select);
+	sqlite3_clear_bindings(stmt);
+	sqlite3_reset(stmt);
 
 	if (rec_count > 0)
 		return true;
@@ -231,8 +332,6 @@ string MetaDb::GetMeta(string key) {
 		char* valChar = (char* )sqlite3_column_text(stmt, 0);
 
 		value = string(valChar);
-
-		free(valChar);
 	} else {
 		value = "";
 	}

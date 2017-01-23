@@ -5,6 +5,10 @@
 #define DATA_TEST		1
 #define DATA_VALIDATE	2
 
+#define MODE_NEW		0
+#define MODE_RESUME		1
+#define MODE_VERIFY		2
+
 struct WriteRequest {
 
 	string id;
@@ -28,13 +32,16 @@ class IDataWriter {
 public:
 	virtual ~IDataWriter() {};
 
+	virtual int Initialize(DatasetMetadata* dataset_meta, int mode) = 0;
+
+	virtual bool CanHandle(string support) = 0;
+
+	virtual int BeginWriting() = 0;
 	virtual string WriteData(Metadata* meta) = 0;
+	virtual int EndWriting() = 0;
 
-	virtual int BeginWriting(DatasetMetadata* dataset_meta) = 0;
-	virtual int EndWriting(DatasetMetadata* dataset_meta) = 0;
-	virtual bool ValidateData(vector<Metadata* > meta) = 0;
+	virtual string CheckIntegrity(string file_name) = 0;
 
-	virtual int Initialize(DatasetMetadata* dataset_meta) = 0;
 	virtual int Finalize() = 0;
 
 	virtual WriterStats GetStats() = 0;

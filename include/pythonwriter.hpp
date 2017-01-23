@@ -21,11 +21,16 @@ public:
 	WriterStats GetStats();
 	void ClearStats();
 	
-	virtual int BeginWriting(DatasetMetadata* dataset_meta);
-	string WriteData(Metadata* meta);
-	virtual int EndWriting(DatasetMetadata* dataset_meta);
+	virtual bool CanHandle(string support);
 
-	virtual int Initialize(DatasetMetadata* dataset_meta);
+	virtual int Initialize(DatasetMetadata* dataset_meta, int mode);
+
+	virtual int BeginWriting();
+	string WriteData(Metadata* meta);
+	virtual int EndWriting();
+
+	virtual string CheckIntegrity(string file_name);
+
 	virtual int Finalize();
 
 	string mBasePath;
@@ -41,10 +46,13 @@ private:
 	PyGILState_STATE gstate;
 
 	PyObject* pInitFn;
+	PyObject* pCanHandleFn;
+	PyObject* pBeginWritingFn;
 	PyObject* pWriteFn;
+	PyObject* pEndWritingFn;
+	PyObject* pCheckIntegrityFn;
 	PyObject* pFinalFn;
 
-	virtual bool ValidateData(vector<Metadata* > meta);
 	virtual string PrepareData(Metadata* meta);
 	string WriteImageData(string filename, vector<uint8_t> image_data);
 	void AddToDict(PyObject* dict, PyObject* key, PyObject* val);
@@ -52,15 +60,6 @@ private:
 	WriterStats mCsvStats;
 
 	bool mInitialized;
-
-	bool mCreateTrainFile;
-	bool mCreateTestFile;
-	bool mCreateValFile;
-
-	// The TFRecord files
-	ofstream mTrainFile;
-	ofstream mTestFile;
-	ofstream mValidateFile;
 };
 
 #endif

@@ -65,8 +65,11 @@ DatasetMetadata* gDatasetMeta;
 
 int lTermWidth = 80;
 
+bool gVerifyApi = false;
+bool gVerifyLocal = false;
 string gBaseDir = "";
 string gExportName = "";
+string gWorkingDir = "";
 el::Level gLogLevel;
 string gApiUrl = "http://api.cvedia.com/";
 string gOutputFormat = "csv";
@@ -75,12 +78,12 @@ string gJobID = "";
 string gVersion = CLI_VERSION;
 string gAPIVersion = API_VERSION;
 
-bool gResume = false;
+int gResume = MODE_NEW;
 
 void SigHandler(int s);
 bool gInterrupted = false;
 
-enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, LOGLEVEL, RESUME, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
+enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, LOGLEVEL, VERIFYAPI, VERIFYLOC, RESUME, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
 
 int main(int argc, char* argv[]) {
 
@@ -166,15 +169,17 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, version.c_str() });
 	usage_vec.push_back({HELP,    	0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." });
 	usage_vec.push_back({JOB,    	0,"j", "job",option::Arg::Required, "  --job=<id>, -j <id>  \tAPI Job ID" });
-	usage_vec.push_back({LOGLEVEL,    	0,"l", "log-level",option::Arg::Required, "  --log-level=<level>, -l <level>  \tSpecify the log level (fatal,error,warning,debug,info,trace)" });
+	usage_vec.push_back({LOGLEVEL,	0,"l", "log-level",option::Arg::Required, "  --log-level=<level>, -l <level>  \tSpecify the log level (fatal,error,warning,debug,info,trace)" });
 	usage_vec.push_back({DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" });
 	usage_vec.push_back({NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" });
 	usage_vec.push_back({RESUME,   	0,"" , "resume",option::Arg::None, "  --resume  \tResume downloading an existing job." });
+	usage_vec.push_back({VERIFYAPI,	0,"" , "verify-api",option::Arg::None, "  --verify-api  \tVerify the state of an exported dataset with the Cvedia API." });
+	usage_vec.push_back({VERIFYLOC,	0,"" , "verify-local",option::Arg::None, "  --verify-local  \tPerform integrity check between an exported dataset and the local Meta Db" });
 	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
 	usage_vec.push_back({BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." });
 	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." });
 	usage_vec.push_back({API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  });
-	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore the images as files on disk instead of inside the output format. This option might be overridden by the output module" });
+	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore images/blobs as files on disk. This is default for output formats that dont support binary storage" });
 	usage_vec.push_back({IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." });
 
 	// Insert the python modules with their options
@@ -231,13 +236,25 @@ int main(int argc, char* argv[]) {
 	}
 	
 	if (options[RESUME].count() == 1) {
-		gResume = true;
+		gResume = MODE_RESUME;
 	}
 
+	if (options[VERIFYAPI].count() == 1) {
+		gVerifyApi = true;
+	}
+
+	if (options[VERIFYLOC].count() == 1) {
+		gVerifyLocal = true;
+	}
+	
 	if (options[THREADS].count() == 1) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 	
+	if (options[IMAGES_EXTERNAL].count() == 1) {
+		mod_options["images-external"] = "1";
+	}
+
 	if (options[IMAGES_SAME_DIR].count() == 1) {
 		mod_options["images-same-dir"] = "1";
 	}
@@ -284,9 +301,11 @@ int main(int argc, char* argv[]) {
 	else
 		gBaseDir += "/";
 
+	gWorkingDir = gBaseDir + gExportName + "/";
+
 	mod_options["base_dir"] = gBaseDir;
 	mod_options["export_name"] = gExportName;
-	mod_options["working_dir"] = gBaseDir + gExportName + "/";
+	mod_options["working_dir"] = gWorkingDir;
 
 	int dir_err = mkdir(mod_options["working_dir"].c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 	if (dir_err == -1 && errno != EEXIST) {
@@ -305,7 +324,14 @@ int main(int argc, char* argv[]) {
 	sigaction(SIGINT, &sigIntHandler, NULL);
 
 	if (InitializeApi() == 0) {
-		StartExport(mod_options);
+
+		if (gVerifyApi == true) {
+			VerifyApi(mod_options);
+		} else if (gVerifyLocal == true) {
+			VerifyLocal(mod_options);
+		} else {
+			StartExport(mod_options);
+		}
 	}
 	
 	return 1;
@@ -327,19 +353,22 @@ int StartExport(map<string,string> options) {
 
 	MetaDb* p_mdb = new MetaDb();
 
-	if (gResume == false) {
-		int rc = p_mdb->NewDb(options["working_dir"] + "/" + gExportName + ".db");
+	if (gResume == MODE_NEW) {
+		int rc = p_mdb->NewDb(options["working_dir"] + "/" + gJobID + ".db");
+
+		if (rc == -1)
+			return -1;
+
+		p_mdb->InsertMeta("api_version", gAPIVersion);
+		p_mdb->InsertMeta("cli_version", gVersion);
+		p_mdb->InsertMeta("name", gExportName);
 	}
 	else {
-		int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gExportName + ".db");
+		int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gJobID + ".db");
 		if (rc == 0) {
 			LOG(ERROR) << "Could not open resume state";
 		}
 	}
-
-	p_mdb->InsertMeta("api_version", gAPIVersion);
-	p_mdb->InsertMeta("cli_version", gVersion);
-	p_mdb->InsertMeta("name", gExportName);
 
 	time_t seconds;
 
@@ -381,8 +410,16 @@ int StartExport(map<string,string> options) {
 
 	// Initialize the writer module. This can fail in many ways including specifying
 	// a non-supported combination of output fields
-	if (p_writer->Initialize(gDatasetMeta) != 0) {
+	if (p_writer->Initialize(gDatasetMeta, gResume) != 0) {
 		LOG(ERROR) << "Failed to initialize " << gOutputFormat;
+		return -1;
+	}
+
+	bool can_resume = p_writer->CanHandle("resume");
+	bool can_store_blobs = p_writer->CanHandle("blobs");
+
+	if (!can_resume && gResume == true) {
+		LOG(ERROR) << "Resume not supported by output module";
 		return -1;
 	}
 
@@ -391,11 +428,40 @@ int StartExport(map<string,string> options) {
 	// Fetch basic stats on export
 	int num_batches = ceil(batch_size / (float)gBatchSize);
 
+	StartFeedThread(options, 0);
+	
 	for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
 		unsigned int queued_downloads = 0;
 
-		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+		vector<Metadata* > meta_data;
+
+		feed_mutex.lock();
+		if (batch_idx > 0 && feed_readahead.size() == 0) {
+			LOG(INFO) << "Readahead feed empty.. waiting for data.";
+		}
+		feed_mutex.unlock();
+
+		do {
+
+			feed_mutex.lock();
+			{
+				// New data is ready
+				if (feed_readahead.size() > 0) {
+					meta_data = feed_readahead.front();
+					feed_readahead.pop_front();
+					feed_mutex.unlock();
+					break;
+				}
+			}
+			feed_mutex.unlock();
+
+			// Wait for new data to come in
+			usleep(100000);
+
+		} while(1);
+
+//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 		if (meta_data.size() == 0) {
 			LOG(WARNING) << "No metadata returned by API, end of dataset?";
@@ -409,7 +475,7 @@ int StartExport(map<string,string> options) {
 		// Queue up all requests in this batch
 		for (Metadata* m : meta_data) {
 
-			if (!p_mdb->HasApiHash(m->hash)) {
+			if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
 				for (MetadataEntry* entry : m->entries) {
 
 					if (entry->url != "") {
@@ -494,6 +560,8 @@ int StartExport(map<string,string> options) {
 							archive_read_close(ar);
 							archive_read_free(ar);
 
+							skip_meta_entry = true;
+							m->skip_record = true;	// Skip this record
 							continue;
 						}
 
@@ -538,7 +606,11 @@ int StartExport(map<string,string> options) {
 
 						if (file_id == NULL) {
 							LOG(ERROR) << entry->url << " did not contain a file_id.diz";
-							return -1;
+
+							skip_meta_entry = true;
+							m->skip_record = true;	// Skip this record
+
+							continue;
 						}
 
 						// Make sure we NULL terminate the text file
@@ -580,27 +652,24 @@ int StartExport(map<string,string> options) {
 
 			}	// for (MetaDataEntry* entry : m->entries)
 
-			m->entries = new_entries;
-			meta_data_unpacked.push_back(m);
+			if (!m->skip_record) {
+				m->entries = new_entries;
+				meta_data_unpacked.push_back(m);
+			}
 
 		}	// for (Metadata* m : meta_data)
 
 		meta_data.clear();
 
-		bool is_valid = p_writer->ValidateData(meta_data_unpacked);
-		if (!is_valid) {
-			LOG(ERROR) << "DataWriter returned false on ValidateData";
-			return -1;
-		}
-
 		int to_write = meta_data_unpacked.size();
 		int cur_write = 0;
 
-		if (p_writer->BeginWriting(gDatasetMeta) != 0) {
+		if (p_writer->BeginWriting() != 0) {
 			LOG(ERROR) << "BeginWriting() failed ";
 			return -1;
 		}
 
+		// Iterate over the metadata a final time while calling the WriteData on the storage module
 		for (Metadata* m : meta_data_unpacked) {
 
 			if (time(NULL) != seconds) {
@@ -609,19 +678,65 @@ int StartExport(map<string,string> options) {
 				seconds = time(NULL);
 			}
 
-			string record_hash = p_writer->WriteData(m);
-			if (record_hash == "") {
-				LOG(ERROR) << "WriteData returned empty hash";
-				return -1;
+			// If the module doesnt support blobs or images-external is forced we first store
+			// the data on disk and only pass the file_uri to the output modules
+			if (options["images-external"] != "" || !can_store_blobs) {
+				// Loop through individual fields to find any image/raw to store on disk
+				for (MetadataEntry* e : m->entries) {
+					if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
+
+						string file_uri = "";
+						if (e->value_type == METADATA_VALUE_TYPE_IMAGE)
+							file_uri = WriteImageData(e->filename, &e->image_data[0], e->image_data.size(), true);
+						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float")
+							file_uri = WriteImageData(e->filename, (uint8_t*)&e->float_raw_data[0], e->float_raw_data.size() * 4, true);
+						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8")
+							file_uri = WriteImageData(e->filename, &e->uint8_raw_data[0], e->uint8_raw_data.size(), true);
+						
+						// We were unable to write the image to disk, fail this record
+						if (file_uri == "") {
+							m->skip_record = true;
+						}
+
+						e->file_uri = file_uri;
+					}
+				}
 			}
 
-			// Insert the API and record hash into the meta db
-			p_mdb->InsertHash(m->hash, record_hash);
+			if (!m->skip_record) {
+				string writer_res = p_writer->WriteData(m);
+
+				// Tokenize the output from the writer. Key=Value;Key=Value...
+				map<string, string> keyval_map;
+
+				for (const string& tag : split(writer_res, ';')) {
+					auto key_val = split(tag, '=');
+					keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+				}
+
+				string record_hash = keyval_map["hash"];
+				if (record_hash == "") {
+					LOG(ERROR) << "WriteData returned empty hash";
+					return -1;
+				}
+
+				// Store the filename in the meta db. 
+				string file_name = keyval_map["file"];
+				int file_id = 0;
+
+				if (file_name != "") {
+					// Generate a fileid or return an existing one
+					file_id = p_mdb->GetFileId(file_name);
+				}
+
+				// Insert the API and record hash into the meta db
+				p_mdb->InsertHash(file_id, m->hash, record_hash);
+			}
 
 			cur_write++;
 		}
 
-		if (p_writer->EndWriting(gDatasetMeta) != 0) {
+		if (p_writer->EndWriting() != 0) {
 			LOG(ERROR) << "EndWriting() failed ";
 			return -1;
 		}
@@ -641,6 +756,161 @@ int StartExport(map<string,string> options) {
 
 	// Call finalize on the writer function
 	p_writer->Finalize();
+
+	StopFeedThread();
+
+	return 0;
+}
+
+int VerifyLocal(map<string,string> options) {
+
+	LOG(INFO) << "Starting local dataset verification";
+
+	MetaDb* p_mdb = new MetaDb();
+
+	int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gJobID + ".db");
+	if (rc == 0) {
+		LOG(ERROR) << "Could not open resume state";
+		return -1;
+	}
+
+	gDatasetMeta = GetDatasetMetadata(gJobID);
+	if (gDatasetMeta == NULL) {
+		LOG(ERROR) << "Failed to fetch metadata for dataset";
+		return -1;		
+	}
+
+	vector<string> files = p_mdb->GetFileList();
+
+	IDataWriter *p_writer = NULL;
+
+	if (gOutputFormat == "csv") {
+		p_writer = new CsvWriter(gExportName, options);
+	} else if (gOutputFormat == "caffeimagedata") {
+		p_writer = new CaffeImageDataWriter(gExportName, options);
+#ifdef HAVE_HDF5
+	} else if (gOutputFormat == "hdf5") {
+		p_writer = new Hdf5Writer(gExportName, options);
+#endif
+#ifdef HAVE_PYTHON
+	} else if (gOutputFormat == "tfrecords") {
+		p_writer = new PythonWriter(gExportName, options);
+#endif
+	} else {
+		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
+	}
+
+	int found_in_metadb = 0;		// Hash records in the storage output that match with the Meta Db
+	int not_found_in_metadb = 0;	// Hash records that are not found in the Meta Db
+
+	if (p_writer->Initialize(gDatasetMeta, MODE_VERIFY) != 0) {
+		LOG(ERROR) << "Failed to initialize " << gOutputFormat;
+		return -1;
+	}
+
+	for (string file : files) {
+		LOG(INFO) << file;
+
+		string result = "";
+
+		do {
+			// Tokenize the output from the writer. Key=Value;Key=Value...
+			map<string, string> keyval_map;
+
+			string writer_res = p_writer->CheckIntegrity(file);
+
+			for (const string& tag : split(writer_res, ';')) {
+				auto key_val = split(tag, '=');
+				keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+			}
+
+			string record_hash = keyval_map["hash"];
+			result = keyval_map["result"];
+
+			if (record_hash != "") {
+				LOG(TRACE) << "Checking for record hash " << record_hash;
+
+				if (p_mdb->ContainsHash(record_hash, "record_hash")) {
+					found_in_metadb++;
+				} else {
+					not_found_in_metadb++;
+				}
+			} else {
+				LOG(ERROR) << "CheckIntegrity did not return a hash or EOF";
+				break;
+			}
+
+		} while (result != "eof");
+	}
+
+	LOG(INFO) << "Records found in Meta Db: " << found_in_metadb;
+	LOG(INFO) << "Records not found in Meta Db: " << not_found_in_metadb;
+}
+
+int VerifyApi(map<string,string> options) {
+
+	LOG(INFO) << "Starting dataset verification with API";
+
+	MetaDb* p_mdb = new MetaDb();
+
+	int rc = p_mdb->LoadDb(options["working_dir"] + "/" + gJobID + ".db");
+	if (rc == 0) {
+		LOG(ERROR) << "Could not open resume state";
+		return -1;
+	}
+
+	gDatasetMeta = GetDatasetMetadata(gJobID);
+	if (gDatasetMeta == NULL) {
+		LOG(ERROR) << "Failed to fetch metadata for dataset";
+		return -1;		
+	}
+
+	time_t seconds = time(NULL);
+
+	int batch_size = gDatasetMeta->count;
+
+	LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
+
+	// Fetch basic stats on export
+	int num_batches = ceil(batch_size / (float)gBatchSize);
+
+	int found_local = 0;		// Hash records returned by the API that are found locally
+	int not_found_local = 0;	// Hash records that are not found locally
+	int not_seen_remote = 0;	// Hash records stored locally but not returned by API
+
+	int batch_idx = 0;
+
+	for (;batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+
+		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+
+		if (meta_data.size() == 0) {
+			LOG(WARNING) << "No metadata returned by API, end of dataset?";
+			break;
+		}
+
+		for (Metadata* m : meta_data) {
+
+			if (p_mdb->ContainsHash(m->hash, "api_hash")) {
+				found_local++;
+			} else {
+				not_found_local++;
+			}
+		}
+
+		if (time(NULL) != seconds) {
+			DisplayProgressBar(batch_idx / (float)num_batches, batch_idx, num_batches);
+
+			seconds = time(NULL);
+		}
+	}
+
+	DisplayProgressBar(1, batch_idx, num_batches);
+	cout << endl;
+
+	LOG(INFO) << "Found locally: " << found_local;
+	LOG(INFO) << "Not found locally: " << not_found_local;
+	LOG(INFO) << "Not seen remote: " << not_seen_remote;
 
 	return 0;
 }
@@ -754,4 +1024,19 @@ string JoinStringVector(const vector<string>& vec, const char* delim)
 	}
 
 	return out;
+}
+
+void split(const std::string &s, char delim, std::vector<std::string> &elems) {
+    std::stringstream ss;
+    ss.str(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+}
+
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    split(s, delim, elems);
+    return elems;
 }
