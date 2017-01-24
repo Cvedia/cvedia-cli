@@ -83,7 +83,7 @@ vector<export_module> LuaModules::ListModules(string path) {
 					istreambuf_iterator<char>());
 
 		if (luaL_loadfile(L, script_file.c_str()) || lua_pcall(L, 0, 0, 0)) {
-	        LOG(ERROR) << "Error running luaL_loadfile " << lua_tostring(L, -1);
+		LOG(ERROR) << "Error running luaL_loadfile " << lua_tostring(L, -1);
 			continue;
 		}
 

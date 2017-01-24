@@ -45,7 +45,7 @@ using namespace rapidjson;
 #include "csvwriter.hpp"
 #include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
-// #include "luawriter.hpp"
+#include "luawriter.hpp"
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
 #include "luamodules.hpp"
@@ -391,8 +391,8 @@ int StartExport(map<string,string> options) {
 #ifdef HAVE_LUA
 	LOG(INFO) << "We have LUA";
 	} else if (gOutputFormat == "lua") {
-		// p_writer = new PythonWriter(gExportName, options);
 		LOG(INFO) << "Selected LUA writer";
+		p_writer = new LuaWriter(gExportName, options);
 #endif
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;

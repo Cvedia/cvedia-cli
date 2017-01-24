@@ -27,7 +27,7 @@ endif
 
 bin_PROGRAMS = cvedia
 
-cvedia_SOURCES = md5.cpp cvedia.cpp api.cpp curlreader.cpp csvwriter.cpp hdf5writer.cpp pythonwriter.cpp caffeimagedata.cpp functions.cpp pythonmodules.cpp metadb.cpp luamodules.cpp 
+cvedia_SOURCES = md5.cpp cvedia.cpp api.cpp curlreader.cpp csvwriter.cpp hdf5writer.cpp pythonwriter.cpp caffeimagedata.cpp functions.cpp pythonmodules.cpp metadb.cpp luamodules.cpp luawriter.cpp
 
 cvedia_CPPFLAGS = $(AM_CPPFLAGS)
 cvedia_LDADD = ${AM_LDFLAGS} $(PYLIBS)
