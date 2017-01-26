@@ -45,6 +45,7 @@ public:
 	map<string, string> mModuleOptions;
 
 private:
+	lua_State *L = luaL_newstate();
 
 	virtual string PrepareData(Metadata* meta);
 	string WriteImageData(string filename, vector<uint8_t> image_data);

@@ -29,6 +29,7 @@ using namespace std;
 #include "LuaWriter.hpp"
 
 LuaWriter::LuaWriter(string export_name, map<string, string> options) {
+	luaL_openlibs(L);
 
 	LOG(INFO) << "Initializing LuaWriter";
 
@@ -70,10 +71,7 @@ string LuaWriter::WriteData(Metadata* meta) {
 }
 
 int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
-	lua_State *L = luaL_newstate();
 	LOG(INFO) << "Lua initialize called with module " << mExportName;
-
-	luaL_openlibs(L);
 
 	ifstream script_stream(mExportName);
 	if (!script_stream.is_open()) {
@@ -83,12 +81,10 @@ int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 
 	string script_data((istreambuf_iterator<char>(script_stream)), istreambuf_iterator<char>());
 
-
 	if (luaL_loadfile(L, mExportName.c_str()) || lua_pcall(L, 0, 0, 0)) {
 		LOG(ERROR) << "Error running luaL_loadfile " << lua_tostring(L, -1);
         return -1;
 	}
-
 
 	// Find the initialize function
 	lua_getglobal(L, "initialize");
@@ -140,9 +136,12 @@ int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	if(!lua_isfunction(L,-1))
 	{
 		lua_pop(L,1);
-		LOG(ERROR) << "Could not find 'check_integrity' def in Lua script";
+		if (CanHandle("integrity")) {
+			LOG(ERROR) << "Could not find 'check_integrity' def in Lua script";
+			return -1;
+		}
 		return -1;
-	}
+	} 
 
 	// Find the finalize function
 	lua_getglobal(L, "finalize");
@@ -275,19 +274,79 @@ bool LuaWriter::CanHandle(string support) {
 
     bool can_handle = false;
 
+	lua_getglobal(L, "can_handle");
+	lua_pushlstring(L, support.c_str(), support.size());
+    if (lua_pcall(L, 1, 1, 0) != 0) {
+    	LOG(ERROR) << "Error running function 'can_handle' " << lua_tostring(L, -1) ;
+    	return false;
+    }
+
+    //get function result
+    if (!lua_isboolean(L, -1)) {
+    	LOG(ERROR) << "Error running function 'can_handle' must return a boolean";
+    	return false;
+    } else {
+    	can_handle = lua_toboolean(L, -1);
+    }
+
     return can_handle;
 }
 
 int LuaWriter::BeginWriting() {
-	return 1;
+	// Call the begin_writing function of our lua script
+
+	lua_getglobal(L, "beging_writing");
+    if (lua_pcall(L, 0, 1, 0) != 0) {
+    	LOG(ERROR) << "Error running function 'beging_writing' " << lua_tostring(L, -1) ;
+    	return false;
+    }
+
+    //get function result
+    if (!lua_isboolean(L, -1)) {
+    	LOG(ERROR) << "Error running function 'beging_writing' must return a boolean";
+    	return false;
+    } 
+
+	return 0;
 }
 
 int LuaWriter::EndWriting() {
+	// Call the end_writing function of our python script
+	lua_getglobal(L, "end_writing");
+    if (lua_pcall(L, 0, 1, 0) != 0) {
+    	LOG(ERROR) << "Error running function 'end_writing' " << lua_tostring(L, -1) ;
+    	return false;
+    }
+
+    //get function result
+    if (!lua_isboolean(L, -1)) {
+    	LOG(ERROR) << "Error running function 'end_writing' must return a boolean";
+    	return false;
+    } 
+
 	return 0;
 }
 
 string LuaWriter::CheckIntegrity(string file_name) {
-	return "";
+
+	string result = "";
+
+	lua_getglobal(L, "check_integrity");
+	lua_pushlstring(L, file_name.c_str(), file_name.size());
+	if (lua_pcall(L, 1, 1, 0) != 0) {
+		LOG(ERROR) << "Error running function 'check_integrity' " << lua_tostring(L, -1) ;
+		return false;
+	}
+
+    //get function result
+	if (!lua_isstring(L, -1)) {
+		LOG(ERROR) << "Error running function 'check_integrity' must return a string";
+		return false;
+	} else {
+		result = string(lua_tostring(L, -1));
+	}
+
+	return result;
 }
 
 /**

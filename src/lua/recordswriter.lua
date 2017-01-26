@@ -11,8 +11,9 @@ end
 
 
 function can_handle( feature )
-    if     feature == "a" then return true
-    elseif feature == "b" then return true
+    print("Can handle: " .. feature)
+    if     feature == "resume" then return true
+    elseif feature == "integrity" then return true
     end
 
     return false
@@ -65,7 +66,22 @@ function write_data(entity)
 end
 
 function check_integrity(filename)
-    return true
+    -- global file_itr
+    -- global cur_filename
+    -- global g_options
+
+    -- if cur_filename != filename:
+    --     cur_filename = filename
+    --     file_itr = tf.python_io.tf_record_iterator(g_options["working_dir"] + filename)
+
+    -- for record in file_itr:
+
+    --     m = hashlib.md5()
+    --     m.update(record)
+
+    --     return "hash=" + m.hexdigest()
+
+    -- return "result=eof"
 end
 
 function finalize()
