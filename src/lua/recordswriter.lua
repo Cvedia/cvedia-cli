@@ -24,8 +24,30 @@ function initialize(options, field_list_table, set_list_table, mode)
     output_fields = {}
     g_options = options
 
-    io.write("initialize from lua!!")
-    print("initialize from luaasdasda")
+
+    for key, value in pairs(field_list_table) do
+        output_fields[value["id"]] = value["name"]
+    end
+
+    if mode == 0 then
+        for key, value in pairs(set_list_table) do
+            writer[value] = options["working_dir"] .. value .. ".lua"
+        end
+    end
+    
+    -- debug, requires     luarocks install inspect and local inspect = require('inspect')
+    -- print("final data")
+    -- print(inspect(g_options))
+    -- print(inspect(output_fields))
+    -- print(inspect(writer))
+
+    -- for field in dataset_meta['fields']:
+    --     output_fields[field['id']] = field['name']
+
+    -- # Only create new TFR files if we are in MODE_NEW
+    -- if mode == 0:
+    --     for dataset in dataset_meta['sets']:
+    --         writer[dataset] = tf.python_io.TFRecordWriter(options["working_dir"] + dataset + ".tfr")
 
     return true
 end

@@ -155,6 +155,9 @@ int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 
 	mBasePath = mModuleOptions["working_dir"];
 
+	//push the function to the stack before calling everything
+	lua_getglobal(L, "initialize");
+
 
 	// pass module options to lua
 	lua_newtable(L);
@@ -248,18 +251,17 @@ int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	// PyTuple_SetItem( pTuple, 1, dict_meta);
 	// PyTuple_SetItem( pTuple, 2, PyLong_FromLong(mode));
 
-	lua_getglobal(L, "initialize");
 
 	//Order arguments to be passed
 	lua_pushinteger(L, mode);
-	lua_gettable(L, set_list_table); 
-	lua_gettable(L, field_list_table); 
-	lua_gettable(L, options_table);
+	// lua_gettable(L, set_list_table); 
+	// lua_gettable(L, field_list_table); 
+	// lua_gettable(L, options_table);
 
 
 
 	//do the call (4 arguments, 1 result) 
-	if (lua_pcall(L, 1, 1, 0) != 0) {
+	if (lua_pcall(L, 4, 1, 0) != 0) {
 		LOG(ERROR) << "Error running function 'initialize' " << lua_tostring(L, -1) ;
 		return -1;
 	}
