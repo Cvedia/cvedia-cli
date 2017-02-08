@@ -74,6 +74,9 @@ private:
 	ofstream mTestFile;
 	ofstream mValidateFile;
 
+	string mVerifyFilename;
+	ifstream mVerifyFile;
+
 	// The actual H5 files
 	map<string, H5File* > mH5File;
 };

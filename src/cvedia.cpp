@@ -798,7 +798,7 @@ int VerifyLocal(map<string,string> options) {
 				} else {
 					not_found_in_metadb++;
 				}
-			} else {
+			} else if(result != "eof"){
 				LOG(ERROR) << "CheckIntegrity did not return a hash or EOF";
 				break;
 			}
