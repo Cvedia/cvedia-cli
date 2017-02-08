@@ -95,9 +95,9 @@ int Hdf5Writer::Initialize(DatasetMetadata* dataset_meta, int mode) {
 
 	if (mode == MODE_NEW) {
 
-		mCreateTrainFile 	= false;
-		mCreateTestFile 	= false;
-		mCreateValFile 		= false;
+		mCreateTrainFile 	= true;
+		mCreateTestFile 	= true;
+		mCreateValFile 		= true;
 
 		// Read all passed options
 		if (mModuleOptions["create_train_file"] == "1")
@@ -193,13 +193,10 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 	// Only perform initialization once
 	if (!mInitialized) {
 
-		DSetCreatPropList source_prop;
-		DSetCreatPropList ground_prop;
 
 		Metadata *m = meta[0];
+		DSetCreatPropList prop;
 
-		string sourceDtype;
-		string groundDtype;
 
 		for (MetadataEntry* e : m->entries) {
 
@@ -229,39 +226,19 @@ bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
 				return false;
 			}
 
-			if (e->meta_type == METADATA_TYPE_SOURCE) {
-				mSourceDataDim = dataDim;
-				sourceDtype = e->dtype;
+			// We start with 0 entries and can scale endlessly
+			hsize_t dims[2] 		= {0, dataDim};	
+			hsize_t maxdims[2] 	= {H5S_UNLIMITED, dataDim};
+			hsize_t chunk_dims[2] = {2, dataDim};
+			mSpace = new DataSpace(2, dims, maxdims);
+			prop.setChunk(2, chunk_dims);
+
+			// Create the chunked dataset.  Note the use of pointer.
+			for(auto const& file : mH5File) {
+				mDataSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet(m->setname, (e->dtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSpace, prop));
 			}
-			if (e->meta_type == METADATA_TYPE_GROUND) {
-				mGroundDataDim = dataDim;
-				groundDtype = e->dtype;
-			}
-		}
+			LOG(DEBUG) << string("mDataDim = " + to_string(dataDim));
 
-		LOG(DEBUG) << string("mSourceDataDim = " + to_string(mSourceDataDim) + "  mGroundDataDim = " + to_string(mGroundDataDim)).c_str();
-
-		// We start with 0 entries and can scale endlessly
-		hsize_t source_dims[2] 		= {0, mSourceDataDim};	
-		hsize_t source_maxdims[2] 	= {H5S_UNLIMITED, mSourceDataDim};
-		hsize_t ground_dims[2] 		= {0, mGroundDataDim};	
-		hsize_t ground_maxdims[2] 	= {H5S_UNLIMITED, mGroundDataDim};
-
-		// Used for chunked access of the h5 file
-		hsize_t source_chunk_dims[2] 		= {2, mSourceDataDim};
-		hsize_t ground_chunk_dims[2] 		= {2, mGroundDataDim};
-		
-		mSourceSpace = new DataSpace(2, source_dims, source_maxdims);
-		mGroundSpace = new DataSpace(2, ground_dims, ground_maxdims);
-
-		source_prop.setChunk(2, source_chunk_dims);
-		ground_prop.setChunk(2, ground_chunk_dims);
-
-		// Create the chunked dataset.  Note the use of pointer.
-	    for(auto const& file : mH5File) {
-
-			mDataSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet("data", (sourceDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSourceSpace, source_prop));
-			mLabelSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet("label", (groundDtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mGroundSpace, ground_prop));
 		}
 
 		mInitialized = true;
@@ -320,42 +297,42 @@ string Hdf5Writer::WriteData(Metadata* meta) {
 		return "";
 	}
 
-	void *source_ptr = NULL, *ground_ptr = NULL;
-	string sourceDtype;
-	string groundDtype;
+	void *ptr = NULL;
+	string dtype;
 
 	for (MetadataEntry* e : meta->entries) {
 
-		void *ptr = NULL;
-
-		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
-
+		void *tmp_ptr = NULL;
+		if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
 			if (e->dtype == "uint8")
-				ptr = &e->uint8_raw_data[0];
+				tmp_ptr = &e->uint8_raw_data[0];
 			else if (e->dtype == "float")
-				ptr = &e->float_raw_data[0];
+				tmp_ptr = &e->float_raw_data[0];
+			// else {
+			// 	e->dtype = "uint8";
+			// 	tmp_ptr = &e->image_data[0];
+			// }
 		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 
 			if (e->dtype == "int")
-				ptr = &e->int_value;
+				tmp_ptr = &e->int_value;
 			else if (e->dtype == "float")
-				ptr = &e->float_value;		
+				tmp_ptr = &e->float_value;		
 		}
+		LOG(INFO) << "ValueType: " << e->value_type;
 
-		if (e->meta_type == METADATA_TYPE_SOURCE) {
-			source_ptr = ptr;
-			sourceDtype = e->dtype;
-		}
-		if (e->meta_type == METADATA_TYPE_GROUND) {
-			ground_ptr = ptr;
-			groundDtype = e->dtype;
-		}
+		dtype = e->dtype;
+		ptr = tmp_ptr;
+
+		// mDataSet[meta->setname][e->id] = 
+
 	}
 
 	// Start the actual write
-	AppendEntry(mDataSet[meta->setname], source_ptr, mSourceDataDim, ConvertDtype(sourceDtype));
-	AppendEntry(mLabelSet[meta->setname], ground_ptr, mGroundDataDim, ConvertDtype(groundDtype));
-
+	LOG(INFO) << "Meta setname: " << meta->setname;
+	AppendEntry(mDataSet[meta->setname], ptr, dataDim, ConvertDtype(dtype));
+	
+	//must return md5 here
 	return "";
 }
 

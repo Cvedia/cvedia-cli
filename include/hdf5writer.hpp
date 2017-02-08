@@ -60,14 +60,11 @@ private:
 	bool mCreateTestFile;
 	bool mCreateValFile;
 
-	DataSpace *mSourceSpace;
-	DataSpace *mGroundSpace;
+	DataSpace *mSpace;
 
 	map<string, DataSet* > mDataSet;
-	map<string, DataSet* > mLabelSet;
 
-	hsize_t mSourceDataDim = 0;
-	hsize_t mGroundDataDim = 0;
+	hsize_t dataDim = 0;
 
 	// The txt indices for the H5 files
 	ofstream mTrainFile;
