@@ -21,15 +21,19 @@ public:
 	Hdf5Writer() {};
 	~Hdf5Writer();
 
-	string WriteData(Metadata* meta);
-
 	WriterStats GetStats();
 	void ClearStats();
-	
+
+	virtual bool CanHandle(string support);
+
 	virtual int Initialize(DatasetMetadata* dataset_meta, int mode);
-	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta);
-	
-	virtual int Initialize(DatasetMetadata* dataset_meta, bool resume);
+
+	virtual int BeginWriting();
+	virtual string WriteData(Metadata* meta);
+	virtual int EndWriting();
+
+	virtual string CheckIntegrity(string file_name);
+
 	virtual int Finalize();
 
 	string mBasePath;
