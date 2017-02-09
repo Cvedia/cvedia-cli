@@ -248,7 +248,12 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 
 	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
-	api_url = ReplaceString(api_url, "$OFFSET", to_string(batch_idx*gBatchSize));
+	if (options.count("api_random") == 1) {
+		api_url = ReplaceString(api_url, "$OFFSET", "0");		
+		api_url += "&random";
+	} else {
+		api_url = ReplaceString(api_url, "$OFFSET", to_string(batch_idx*gBatchSize));		
+	}
 
 	LOG(DEBUG) << "Fetching batch at " << api_url;
 
