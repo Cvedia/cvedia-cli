@@ -268,6 +268,7 @@ int Hdf5Writer::BeginWriting() {
 
 
 string Hdf5Writer::WriteData(Metadata* meta) {
+	LOG(INFO) << "WriteData";
 
 	if (!mInitialized) {
 		LOG(ERROR) << "Must call Initialize() first";
@@ -342,6 +343,7 @@ int Hdf5Writer::EndWriting() {
 
 
 const DataType& Hdf5Writer::ConvertDtype(string dtype) {
+	LOG(INFO) << "ConvertDtype: " << dtype;
 
 	if (dtype == "uint8")
 		return PredType::NATIVE_UCHAR;
@@ -355,17 +357,21 @@ const DataType& Hdf5Writer::ConvertDtype(string dtype) {
 }
 
 void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype) {
+	LOG(INFO) << "HDF5 Append entry";
 
 	// Get current extent and increase by 1
 	DataSpace tmp_space = dataset->getSpace();
+	LOG(INFO) << "HDF5 Append entry0";
 
 	int num_dims = tmp_space.getSimpleExtentNdims();
 
 	hsize_t sp_size[num_dims];
+	LOG(INFO) << "HDF5 Append entry1";
 
 	tmp_space.getSimpleExtentDims(sp_size, NULL);
 
 	hsize_t new_dim[2] 	= {sp_size[0]+1, data_size};
+	LOG(INFO) << "HDF5 Append entry2";
 
 	// Extend the DataSet with 1 record
 	dataset->extend(new_dim);
@@ -377,15 +383,19 @@ void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size
 	hsize_t offset[2] = {sp_size[0], 0};
 	// We want to write a single entry 
 	hsize_t startdim[2] = {1, data_size};
+	LOG(INFO) << "HDF5 Append entry3";
 
 	filespace.selectHyperslab(H5S_SELECT_SET, startdim, offset);
 	
 	DataSpace memspace(2, startdim, NULL);
 
 	dataset->write(data_ptr, dtype, memspace, filespace);
+	LOG(INFO) << "End HDF5 Append entry";
 }
 
 string Hdf5Writer::CheckIntegrity(string file_name) {
+
+	LOG(INFO) << "Checking integrity of " << file_name;
 
 	if (mVerifyFilename != file_name) {
 		if (mVerifyFile.is_open())

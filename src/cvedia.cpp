@@ -101,6 +101,7 @@ int main(int argc, char* argv[]) {
 	supported_output.push_back("CSV");
 	supported_output.push_back("CaffeImageData");
 #ifdef HAVE_HDF5
+	LOG(INFO) << "We have HDF5";
 	supported_output.push_back("HDF5");
 #endif
 #ifdef HAVE_PYTHON
@@ -228,7 +229,10 @@ int main(int argc, char* argv[]) {
 		gVerifyApi = true;
 	}
 
+	LOG(INFO) << "Going to verify data????";
+
 	if (options[VERIFYLOC].count() == 1) {
+		LOG(INFO) << "Going to verify data";
 		gVerifyLocal = true;
 	}
 	
@@ -381,6 +385,7 @@ int StartExport(map<string,string> options) {
 	CurlReader *p_reader = new CurlReader();
 
 	IDataWriter *p_writer = NULL;
+	LOG(INFO) << "Output format: " << gOutputFormat;
 
 	if (gOutputFormat == "csv") {
 		p_writer = new CsvWriter(gExportName, options);
@@ -714,7 +719,7 @@ bool GenerateImageMean(vector<Metadata* >& meta_data, ImageMean* mean, map<strin
 				}
 
 				mean->AddImage(img);
-			}
+			} 
 		}
 
 		cur_write++;
@@ -793,7 +798,17 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 					e->file_uri = file_uri;
 				}
 			}
+		} else if( can_store_blobs ) {
+			for (MetadataEntry* e : m->entries) {
+				if (e->value_type == METADATA_VALUE_TYPE_IMAGE ) {
+					cv::Mat img;
+					img = cv::imdecode(e->image_data, CV_LOAD_IMAGE_UNCHANGED);
+					LOG(INFO) << "CopyTo";
+					img.row(0).copyTo(e->float_raw_data);
+				}
+			}
 		}
+		LOG(INFO) << "EndWriting() ok ";
 
 		if (!m->skip_record) {
 			string writer_res = p_writer->WriteData(m);
@@ -1039,6 +1054,7 @@ int VerifyLocal(map<string,string> options) {
 			map<string, string> keyval_map;
 
 			string writer_res = p_writer->CheckIntegrity(file);
+			LOG(INFO) << "Result from check integrity: " << writer_res;
 
 			for (const string& tag : split(writer_res, ';')) {
 				auto key_val = split(tag, '=');
@@ -1047,6 +1063,8 @@ int VerifyLocal(map<string,string> options) {
 
 			string record_hash = keyval_map["hash"];
 			result = keyval_map["result"];
+			LOG(INFO) << "Record_hash: " << record_hash;
+			LOG(INFO) << "result: " << result;
 
 			if (record_hash != "") {
 				LOG(TRACE) << "Checking for record hash " << record_hash;

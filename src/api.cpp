@@ -102,20 +102,25 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 
 		Document d;
 		string data_str( req->read_data.begin(), req->read_data.end() );
+		LOG(INFO) << "Before Parse";
 
 		if (d.Parse(data_str.c_str()).HasParseError()) {
 			LOG(ERROR) << "Failed to parse API Response. Does the JobID exist?";
 			return NULL;
 		}
+		LOG(INFO) << "After Parse";
 
 		if (d.HasMember("count")) {
+			LOG(INFO) << "hasmember count";
 			Value& count_val = d["count"];
 
 			count = count_val.GetInt();
+			LOG(INFO) << "Get count";
 		} else {
 			LOG(ERROR) << "Could not get stats for JobID. Does it exist?";
 			return NULL;
 		}
+		LOG(INFO) << "Lalalalalal";
 
 		meta->count = count;
 
@@ -173,7 +178,10 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 				for (Value::ConstMemberIterator itr = sets.MemberBegin(); itr != sets.MemberEnd(); ++itr) {
 
 					string key = itr->name.GetString();
+					LOG(DEBUG) << "Key: " << key;
+					LOG(DEBUG) << "Getint";
 					float perc = itr->value.GetInt();
+					LOG(DEBUG) << "Aftr Getint";
 
 					DatasetSet s;
 
@@ -247,6 +255,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 	vector<Metadata* > meta_vector;
 
 	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
+	LOG(DEBUG) << "ApiUrl: " << api_url;
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
 	if (options.count("api_random") == 1) {
 		api_url = ReplaceString(api_url, "$OFFSET", "0");		
@@ -258,11 +267,17 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 	LOG(DEBUG) << "Fetching batch at " << api_url;
 
 	ReadRequest *req = CurlReader::RequestUrl(api_url);
-
+	LOG(DEBUG) << "RequestUrl done ";
+	if(req == NULL){
+		LOG(DEBUG) << "Req is Null";
+	}
 	if (req != NULL && req->read_data.size() > 0) {
+		LOG(DEBUG) << "ReadingData ";
 
 		string data_str( req->read_data.begin(), req->read_data.end() );
+		LOG(DEBUG) << "Before ParseFeed ";
 		meta_vector = ParseFeed(data_str.c_str());
+		LOG(DEBUG) << "ParseFeed done ";
 	}
 
 	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes from API";
