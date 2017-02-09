@@ -56,8 +56,9 @@ AC_SUBST(NUMPY_HEADER)
 AC_ARG_WITH([hdf5_cpp], 
   AS_HELP_STRING([--without-hdf5], [build without HDF5 (default: no)]))
 
-AC_SEARCH_LIBS([H5Topen], [hdf5_cpp],
+AC_SEARCH_LIBS([H5Fopen], [hdf5],
 	if test x"$with_hdf5" != x"no"; then
+		[LIBS="-lhdf5_cpp";]
 		[AC_DEFINE(HAVE_HDF5,1,[Define if HDF5 is supported.])  
 		with_hdf5=yes
 	fi
@@ -66,6 +67,17 @@ AC_SEARCH_LIBS([H5Topen], [hdf5_cpp],
 	with_hdf5=no
 ]
 )
+
+PKG_CHECK_MODULES(OPENCV,
+		  opencv,
+		  HAVE_OPENCV=yes, HAVE_OPENCV=no)
+
+AC_SUBST(OPENCV_CFLAGS)
+AC_SUBST(OPENCV_LIBS)
+
+if test "x$HAVE_OPENCV" = "xno"; then
+  AC_MSG_ERROR(OpenCV libraries could not be found)
+fi
 
 #### Find OpenSSL
 AC_MSG_CHECKING([for --with-openssl])
@@ -90,6 +102,7 @@ AM_CONDITIONAL([LIB_SQLITE3],  [test "$have_libsqlite3" = "yes"])
 AM_CONDITIONAL(HAVE_HDF5, test x"$with_hdf5" = x"yes")
 AM_CONDITIONAL(HAVE_TFRECORDS, test x"$with_tfrecords" = x"yes")
 AM_CONDITIONAL(HAVE_PYTHON, test x"$with_python" = x"yes")
+AM_CONDITIONAL(HAVE_OPENCV, test x"$HAVE_OPENCV" = x"yes")
 
 AM_CONDITIONAL(HAVE_SQLITE, test x"$have_libsqlite3" = x"yes")
 

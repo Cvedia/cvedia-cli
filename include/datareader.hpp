@@ -6,7 +6,7 @@ struct ReadRequest {
 	string url;
 	string id;
 	int retry_count;
-	vector<uint8_t> read_data;
+	vector<unsigned char> read_data;
 
 	int status;
 };

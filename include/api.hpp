@@ -79,7 +79,7 @@ struct MetadataEntry {
 	int data_width;
 	int data_height;
 
-	vector<uint8_t> image_data;	// Difference between image_data and uint8_raw_data is that image_data is PNG/JPEG compressed
+	vector<unsigned char> image_data;	// Difference between image_data and uint8_raw_data is that image_data is PNG/JPEG compressed
 	vector<uint8_t> uint8_raw_data;
 	vector<float> float_raw_data;
 
