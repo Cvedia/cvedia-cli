@@ -37,6 +37,22 @@ Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
 
 	mModuleOptions = options;
 	mExportName = export_name;
+
+	if (mModuleOptions["base_dir"] != "") {
+		mBaseDir = mModuleOptions["base_dir"];
+	} else {
+		mBaseDir = "";
+	}
+
+	mBasePath = mBaseDir;
+
+	if (mBasePath == "")
+		mBasePath = "./";
+	else if (mBasePath != "./")
+		mBasePath += "/";
+
+
+	mBasePath += mExportName + "/";
 }
 
 Hdf5Writer::~Hdf5Writer() {
@@ -89,98 +105,16 @@ bool Hdf5Writer::CanHandle(string support) {
 
 
 int Hdf5Writer::Initialize(DatasetMetadata* dataset_meta, int mode) {
+	mDatasetMetadata = dataset_meta;
 
 	// Clear the stats structure
 	mCsvStats = {};
 
 	if (mode == MODE_NEW) {
 
-		mCreateTrainFile 	= true;
-		mCreateTestFile 	= true;
-		mCreateValFile 		= true;
-
-		// Read all passed options
-		if (mModuleOptions["create_train_file"] == "1")
-			mCreateTrainFile = true;
-		if (mModuleOptions["create_test_file"] == "1")
-			mCreateTestFile = true;
-		if (mModuleOptions["create_validate_file"] == "1")
-			mCreateValFile = true;
-
-		if (mModuleOptions["base_dir"] != "") {
-			mBaseDir = mModuleOptions["base_dir"];
-		} else {
-			mBaseDir = "";
-		}
-
-		mBasePath = mBaseDir;
-
-		if (mBasePath == "")
-			mBasePath = "./";
-		else
-			mBasePath += "/";
-
-		mBasePath += mExportName + "/";
-
 		int dir_err = mkdir(mBasePath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 		if (dir_err == -1 && errno != EEXIST) {
 			LOG(ERROR) << string("Could not create directory: " + mBasePath).c_str();
-			return -1;
-		}
-
-		if (mCreateTrainFile) {
-			mTrainFile.open(mBasePath + "train.txt", ios::out | ios::trunc);
-			if (!mTrainFile.is_open()) {
-				LOG(ERROR) << string("Failed to open: " + mBasePath + "train.txt").c_str();
-				return -1;			
-			}
-
-			try {
-				mH5File[METADATA_TRAIN] = new H5File(mBasePath + "train.h5", H5F_ACC_TRUNC);
-				mTrainFile << mBasePath << "train.h5" << endl;
-			} catch (H5::Exception e) {
-				LOG(ERROR) << string("Failed to create: " + mBasePath + "train.h5").c_str();
-				LOG(ERROR) << e.getCDetailMsg();
-				return -1;						
-			}
-		}
-
-		if (mCreateTestFile) {
-			mTestFile.open(mBasePath + "test.txt", ios::out | ios::trunc);
-			if (!mTestFile.is_open()) {
-				LOG(ERROR) << string("Failed to open: " + mBasePath + "test.txt").c_str();
-				return -1;			
-			}
-
-			try {
-				mH5File[METADATA_TEST] = new H5File(mBasePath + "test.h5", H5F_ACC_TRUNC);
-				mTestFile << mBasePath << "test.h5" << endl;
-			} catch (H5::Exception e) {
-				LOG(ERROR) << string("Failed to create: " + mBasePath + "test.h5").c_str();
-				LOG(ERROR) << e.getCDetailMsg();
-				return -1;						
-			}
-		}
-
-		if (mCreateValFile) {
-			mValidateFile.open(mBasePath + "validate.txt", ios::out | ios::trunc);
-			if (!mValidateFile.is_open()) {
-				LOG(ERROR) << string("Failed to open: " + mBasePath + "validate.txt").c_str();
-				return -1;			
-			}
-
-			try {
-				mH5File[METADATA_VALIDATE] = new H5File(mBasePath + "validate.h5", H5F_ACC_TRUNC);
-				mValidateFile << mBasePath << "validate.h5" << endl;			
-			} catch (H5::Exception e) {
-				LOG(ERROR) << string("Failed to create: " + mBasePath + "validate.h5").c_str();
-				LOG(ERROR) << e.getCDetailMsg();
-				return -1;						
-			}
-		}
-
-		if (!mCreateTrainFile && !mCreateTestFile && !mCreateValFile) {
-			LOG(ERROR) << "Must enable at least 1 of : create_train_file, create_test_file, create_validate_file";
 			return -1;
 		}
 	}
@@ -189,7 +123,6 @@ int Hdf5Writer::Initialize(DatasetMetadata* dataset_meta, int mode) {
 }
 
 bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
-
 	// Only perform initialization once
 	if (!mInitialized) {
 
@@ -263,6 +196,27 @@ int Hdf5Writer::Finalize() {
 }
 
 int Hdf5Writer::BeginWriting() {
+		// Open all output sets on disk in append mode
+	for (DatasetSet s : mDatasetMetadata->sets) {
+		LOG(INFO) << mBasePath;
+		LOG(INFO) << s.set_name;
+		mSetFile[s.set_name].open(mBasePath + s.set_name + ".txt", ios::out | ios::app);
+		if (!mSetFile[s.set_name].is_open()) {
+			LOG(ERROR) << "Failed to open: " << mBasePath << s.set_name << ".txt";
+			return -1;			
+		}		
+
+		try {
+			mH5File[s.set_name] = new H5File(mBasePath + s.set_name + ".h5", H5F_ACC_TRUNC);
+			mSetFile[s.set_name] << mBasePath << s.set_name +".h5" << endl;
+		} catch (H5::Exception e) {
+			LOG(ERROR) << "Failed to create: " + mBasePath + s.set_name + ".h5";
+			LOG(ERROR) << e.getCDetailMsg();
+			return -1;						
+		}
+
+	}
+
 	return 0;
 }
 
@@ -275,27 +229,8 @@ string Hdf5Writer::WriteData(Metadata* meta) {
 		return "";
 	}
 
-	if (meta->setname == METADATA_TRAIN) {
-		if (!mCreateTrainFile) {
-			LOG(ERROR) << "Training file not specified but data contains DATA_TRAIN";			
-			return "";
-		}
-
-	} else if (meta->setname == METADATA_TEST) {
-		if (!mCreateTestFile) {
-			LOG(ERROR) << "Test file not specified but data contains DATA_TEST";			
-			return "";
-		}
-
-	} else if (meta->setname == METADATA_VALIDATE) {
-		if (!mCreateValFile) {
-			LOG(ERROR) << "Validate file not specified but data contains DATA_VALIDATE";			
-			return "";
-		}
-
-	} else {
-		LOG(ERROR) << string("API returned unsupported file type: " + meta->setname).c_str();			
-		return "";
+	if(!mSetFile.count(meta->setname)){
+		LOG(ERROR) << "Set file does not exist " << meta->setname;
 	}
 
 	void *ptr = NULL;
@@ -338,6 +273,11 @@ string Hdf5Writer::WriteData(Metadata* meta) {
 }
 
 int Hdf5Writer::EndWriting() {
+	// Close all open files
+	for (DatasetSet s : mDatasetMetadata->sets) {
+		mSetFile[s.set_name].close();
+	}
+
 	return 0;
 }
 
@@ -351,7 +291,8 @@ const DataType& Hdf5Writer::ConvertDtype(string dtype) {
 		return PredType::NATIVE_FLOAT;
 	if (dtype == "int")
 		return PredType::NATIVE_INT32;
-
+	if (dtype == "")
+		return PredType::NATIVE_UCHAR;
 	LOG(ERROR) << string("Unsupported dtype passed for conversion: " + dtype).c_str();
 	return PredType::NATIVE_UCHAR;
 }

@@ -803,8 +803,15 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 				if (e->value_type == METADATA_VALUE_TYPE_IMAGE ) {
 					cv::Mat img;
 					img = cv::imdecode(e->image_data, CV_LOAD_IMAGE_UNCHANGED);
+					if(img.isContinuous()){
+						e->image_data.assign(img.datastart, img.dataend);
+					}  else {
+						for (int i = 0; i < img.rows; ++i) {
+							e->image_data.insert(e->image_data.end(), img.ptr<uchar>(i), img.ptr<uchar>(i)+img.cols);
+						}
+					}
 					LOG(INFO) << "CopyTo";
-					img.row(0).copyTo(e->float_raw_data);
+					// img.row(0).copyTo(e->float_raw_data);
 				}
 			}
 		}

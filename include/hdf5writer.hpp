@@ -63,6 +63,7 @@ private:
 	DataSpace *mSpace;
 
 	map<string, DataSet* > mDataSet;
+	DatasetMetadata* mDatasetMetadata;
 
 	hsize_t dataDim = 0;
 
@@ -70,6 +71,7 @@ private:
 	ofstream mTrainFile;
 	ofstream mTestFile;
 	ofstream mValidateFile;
+	map<string, ofstream > mSetFile;
 
 	string mVerifyFilename;
 	ifstream mVerifyFile;
