@@ -34,6 +34,8 @@ CurlReader::CurlReader() {
 
 	mThreadsMax = 100;
 
+	mTerminate = false;
+
 	// Initialize a multi stack
 	mMultiHandle = curl_multi_init();
 
@@ -44,6 +46,8 @@ CurlReader::CurlReader() {
 }
 
 CurlReader::~CurlReader() {
+	mTerminate = true;
+	mWorkerThread.join();
 }
 
 ReadRequest* CurlReader::RequestUrl(string url) {
@@ -297,5 +301,5 @@ void CurlReader::WorkerThread() {
 			curl_multi_remove_handle(mMultiHandle, p_msg->easy_handle);
 			curl_easy_cleanup(p_msg->easy_handle);
 		}      
-	} while (1);
+	} while (mTerminate == false);
 }

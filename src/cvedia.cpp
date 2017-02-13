@@ -52,13 +52,16 @@ using namespace rapidjson;
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
 
+extern bool gTerminateReadahead;
+
 INITIALIZE_EASYLOGGINGPP
 
 // Initialize global variables
 int gDebug 		= 1;
 
-int gBatchSize 	= 256;
-int gDownloadThreads = 100;
+int gBatchSize 			= 256;
+int gDownloadThreads 	= 100;
+int gIterations 		= 1;
 
 vector<export_module> gModules;
 
@@ -90,7 +93,7 @@ int gResume = MODE_NEW;
 void SigHandler(int s);
 bool gInterrupted = false;
 
-enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, LOGLEVEL, VERIFYAPI, VERIFYLOC, GLOBALMEAN, CHANNELMEAN, PIXELMEAN, SUBTRACTMEAN, SAVEMEAN, RESUME, 
+enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, ITERATIONS, LOGLEVEL, VERIFYAPI, VERIFYLOC, GLOBALMEAN, CHANNELMEAN, PIXELMEAN, SUBTRACTMEAN, SAVEMEAN, RESUME, 
 	IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
 
 int main(int argc, char* argv[]) {
@@ -152,6 +155,7 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" });
 	usage_vec.push_back({NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" });
 	usage_vec.push_back({RESUME,   	0,"" , "resume",option::Arg::None, "  --resume  \tResume downloading an existing job." });
+	usage_vec.push_back({ITERATIONS,0,"i", "iterations",option::Arg::Required, "  --iterations=<num>, -i <num>  \tNumber of times to download the specified Job ID. This can be used in conjunction with jobs that have a random augmentation (default: 1)" });
 	usage_vec.push_back({VERIFYAPI,	0,"" , "verify-api",option::Arg::None, "  --verify-api  \tVerify the state of an exported dataset with the Cvedia API." });
 	usage_vec.push_back({VERIFYLOC,	0,"" , "verify-local",option::Arg::None, "  --verify-local  \tPerform integrity check between an exported dataset and the local Meta Db" });
 	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
@@ -252,6 +256,10 @@ int main(int argc, char* argv[]) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 	
+	if (options[ITERATIONS].count() == 1) {
+		gIterations = atoi(options[ITERATIONS].arg);
+	}
+
 	if (options[IMAGES_EXTERNAL].count() == 1) {
 		mod_options["images-external"] = "1";
 	}
@@ -285,6 +293,8 @@ int main(int argc, char* argv[]) {
 		} else if (loglevel == "info") {
 			gLogLevel = el::Level::Info;
 		}
+	} else {
+		gLogLevel = el::Level::Info;
 	}
 
 	ConfigureLogger();
@@ -378,8 +388,6 @@ int StartExport(map<string,string> options) {
 
 	time_t seconds;
 
-	CurlReader *p_reader = new CurlReader();
-
 	IDataWriter *p_writer = NULL;
 
 	if (gOutputFormat == "csv") {
@@ -397,8 +405,6 @@ int StartExport(map<string,string> options) {
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
 	}
-
-	p_reader->SetNumThreads(gDownloadThreads);
 
 	gDatasetMeta = GetDatasetMetadata(gJobID);
 	if (gDatasetMeta == NULL) {
@@ -422,8 +428,6 @@ int StartExport(map<string,string> options) {
 		return -1;
 	}
 
-	LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
-
 	LOG(INFO) << "Exporting the following sets:";
 
 	for (DatasetSet s : gDatasetMeta->sets) {
@@ -435,121 +439,138 @@ int StartExport(map<string,string> options) {
 		LOG(INFO) << mapping->id << ": " << mapping->name;
 	}
 
-	// Fetch basic stats on export
-	int num_batches = ceil(batch_size / (float)gBatchSize);
+	for (int iter=0;iter<gIterations;iter++) {
 
-	StartFeedThread(options, 0);
-	
-	for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+		CurlReader *p_reader = new CurlReader();
+		p_reader->SetNumThreads(gDownloadThreads);
 
-		unsigned int queued_downloads = 0;
 
-		vector<Metadata* > meta_data;
+		LOG(INFO) << "Iteration #" << to_string(iter+1);
+		LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
 
-		feed_mutex.lock();
-		if (batch_idx > 0 && feed_readahead.size() == 0) {
-			LOG(INFO) << "Readahead feed empty.. waiting for data.";
-		}
-		feed_mutex.unlock();
+		// Fetch basic stats on export
+		int num_batches = ceil(batch_size / (float)gBatchSize);
 
-		do {
+		StartFeedThread(options, 0);
+		
+		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+
+			unsigned int queued_downloads = 0;
+
+			vector<Metadata* > meta_data;
 
 			feed_mutex.lock();
-			{
-				// New data is ready
-				if (feed_readahead.size() > 0) {
-					meta_data = feed_readahead.front();
-					feed_readahead.pop_front();
-					feed_mutex.unlock();
-					break;
-				}
+			if (batch_idx > 0 && feed_readahead.size() == 0) {
+				LOG(DEBUG) << "Readahead feed empty.. waiting for data.";
 			}
+			if (gTerminateReadahead == true) {
+				LOG(INFO) << "Reached end of feed but not all batches returned.";
+				break;
+			}
+
 			feed_mutex.unlock();
 
-			// Wait for new data to come in
-			usleep(100000);
+			do {
 
-		} while(1);
-
-//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
-
-		if (meta_data.size() == 0) {
-			LOG(WARNING) << "No metadata returned by API, end of dataset?";
-			return -1;
-		}
-
-		LOG(DEBUG) << "Starting download for batch #" << to_string(batch_idx);
-
-		seconds = time(NULL);
-
-		// Queue up all requests in this batch
-		for (Metadata* m : meta_data) {
-
-			if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
-				for (MetadataEntry* entry : m->entries) {
-
-					if (entry->url != "") {
-						p_reader->QueueUrl(md5(entry->url), entry->url);
-						queued_downloads++;
+				feed_mutex.lock();
+				{
+					// New data is ready
+					if (feed_readahead.size() > 0) {
+						meta_data = feed_readahead.front();
+						feed_readahead.pop_front();
+						feed_mutex.unlock();
+						break;
 					}
 				}
-			} else {
-				m->skip_record = true;
-				LOG(TRACE) << m->hash << " is already in hashes db";
+				feed_mutex.unlock();
+
+				// Wait for new data to come in
+				usleep(100000);
+
+			} while(1);
+
+	//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+
+			if (meta_data.size() == 0) {
+				LOG(WARNING) << "No metadata returned by API, end of dataset?";
+				return -1;
 			}
-		}
 
-		ReaderStats stats = p_reader->GetStats();
+			LOG(DEBUG) << "Starting download for batch #" << to_string(batch_idx);
 
-		// Loop until all downloads are finished
-		while (stats.num_reads_completed < queued_downloads) {
+			seconds = time(NULL);
 
+			// Queue up all requests in this batch
+			for (Metadata* m : meta_data) {
+
+				if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
+					for (MetadataEntry* entry : m->entries) {
+
+						if (entry->url != "") {
+							p_reader->QueueUrl(md5(entry->url), entry->url);
+							queued_downloads++;
+						}
+					}
+				} else {
+					m->skip_record = true;
+					LOG(TRACE) << m->hash << " is already in hashes db";
+				}
+			}
+
+			ReaderStats stats = p_reader->GetStats();
+
+			// Loop until all downloads are finished
+			while (stats.num_reads_completed < queued_downloads) {
+
+				stats = p_reader->GetStats();
+
+				if (time(NULL) != seconds) {
+					DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+
+					seconds = time(NULL);
+				}
+
+				usleep(100);
+			}
+
+			// Display the 100% complete
+			DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
+			cout << endl;
+
+			// Update stats for last time
 			stats = p_reader->GetStats();
 
-			if (time(NULL) != seconds) {
-				DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+			LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
+			LOG(INFO) << "Syncing batch to disk...";
 
-				seconds = time(NULL);
+			p_reader->ClearStats();
+
+			// Downloading finished, gather all cURL responses
+			map<string, ReadRequest* > responses = p_reader->GetAllData();
+
+			vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
+
+			meta_data.clear();
+
+			WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+
+			p_reader->ClearData();
+
+			// We are completely done with the response data
+			for (auto& kv : responses) {
+				delete kv.second;
 			}
 
-			usleep(100);
+			responses.clear();
 		}
 
-		// Display the 100% complete
-		DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
-		cout << endl;
+		StopFeedThread();
 
-		// Update stats for last time
-		stats = p_reader->GetStats();
-
-		LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
-		LOG(INFO) << "Syncing batch to disk...";
-
-		p_reader->ClearStats();
-
-		// Downloading finished, gather all cURL responses
-		map<string, ReadRequest* > responses = p_reader->GetAllData();
-
-		vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
-
-		meta_data.clear();
-
-		WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
-
-		p_reader->ClearData();
-
-		// We are completely done with the response data
-		for (auto& kv : responses) {
-			delete kv.second;
-		}
-
-		responses.clear();
+		delete p_reader;
 	}
 
 	// Call finalize on the writer function
 	p_writer->Finalize();
-
-	StopFeedThread();
 
 	return 0;
 }
@@ -686,7 +707,7 @@ bool GenerateImageMean(vector<Metadata* >& meta_data, ImageMean* mean, map<strin
 
 	time_t seconds = time(NULL);
 
-	int to_write = meta_data.size();
+//	unsigned int to_write = meta_data.size();
 	int cur_write = 0;
 
 	// Iterate over the metadata a final time while calling the ImageMean module
@@ -728,7 +749,7 @@ bool GenerateImageMean(vector<Metadata* >& meta_data, ImageMean* mean, map<strin
 
 bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* p_mdb, map<string,string> options) {
 
-	time_t seconds;
+	time_t seconds = time(NULL);
 
 	bool can_store_blobs = p_writer->CanHandle("blobs");
 	int to_write = meta_data.size();
@@ -876,7 +897,7 @@ vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, Rea
 
 					int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
 					if (r == ARCHIVE_FATAL) {
-						LOG(ERROR) << "Skipping broken archive at: " << entry->url;
+						LOG(DEBUG) << "Skipping broken archive at: " << entry->url;
 
 						archive_read_close(ar);
 						archive_read_free(ar);

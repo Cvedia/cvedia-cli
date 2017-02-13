@@ -219,6 +219,7 @@ void ReadaheadBatch(map<string,string> options, int batch_idx) {
 
 		if (feed.size() == 0) {
 			LOG(DEBUG) << "Feed reader finished at batch_idx " << batch_idx;
+			gTerminateReadahead = true;
 			return;
 		}
 
@@ -265,7 +266,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 		meta_vector = ParseFeed(data_str.c_str());
 	}
 
-	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes from API";
+	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
 
 	return meta_vector;
 }
@@ -491,6 +492,8 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 					for (int value_idx = 0; value_idx < value_size; ++value_idx) {
 						meta_entry->string_value.push_back(entry_itr->value[value_idx].GetString());
 					}
+				} else if (entry_itr->value.IsString()) {
+					meta_entry->string_value.push_back(entry_itr->value.GetString());					
 				}
 			} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 				if (meta_entry->dtype == "") {
