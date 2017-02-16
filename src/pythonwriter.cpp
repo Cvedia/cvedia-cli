@@ -66,7 +66,7 @@ bool PythonWriter::CanHandle(string support) {
 	Py_XDECREF(pTuple);
 
 	if (rslt == NULL) {
-		PyErr_PrintEx(0);
+//		PyErr_PrintEx(0);
 		return false;
 	}
 

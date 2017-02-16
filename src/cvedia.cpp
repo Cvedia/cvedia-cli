@@ -46,7 +46,7 @@ using namespace rapidjson;
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
-#include "hdf5writer.hpp"
+//#include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "imagemean.hpp"
 #include "caffeimagedata.hpp"
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 	supported_output.push_back("CSV");
 	supported_output.push_back("CaffeImageData");
 #ifdef HAVE_HDF5
-	supported_output.push_back("HDF5");
+//	supported_output.push_back("HDF5");
 #endif
 #ifdef HAVE_PYTHON
 
@@ -396,7 +396,7 @@ int StartExport(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-		p_writer = new Hdf5Writer(gExportName, options);
+//		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -1032,7 +1032,7 @@ int VerifyLocal(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-		p_writer = new Hdf5Writer(gExportName, options);
+//		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {

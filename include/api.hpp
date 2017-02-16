@@ -14,7 +14,7 @@ using namespace rapidjson;
 // API Calls defined
 #define API_FUNCTION_HELLO			"welcome"
 #define API_FUNCTION_COUNT			"meta"
-#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$OFFSET"
+#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$OFFSET&ssl=0"
 
 #define METADATA_VALUE_TYPE_IMAGE	"image"
 #define METADATA_VALUE_TYPE_RAW		"raw"
