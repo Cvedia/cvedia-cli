@@ -974,8 +974,30 @@ vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, Rea
 							return meta_data_unpacked;
 					}
 
-					// Copy data to new vector
-					new_entries.insert(new_entries.end(), tar_meta.begin(), tar_meta.end());
+					// Delete the TAR file entry
+					m->entries.erase(remove(m->entries.begin(), m->entries.end(), entry),m->entries.end());
+
+					// Iterate all converted tar entries and add as new records
+					for (MetadataEntry* tar_entry : tar_meta) {
+
+						Metadata* new_record = new Metadata();
+						new_record->setname = m->setname;
+						new_record->hash = m->hash;
+
+						// Insert the main fields that were supplied in the field						
+						new_record->entries.insert(new_record->entries.end(), m->entries.begin(), m->entries.end());
+						// Insert the unpacked image
+						new_record->entries.push_back(tar_entry);
+/*
+						for (MetadataEntry* e : new_record->entries) {
+							cout << "id: " << e->id << " fieldid: " << e->field_id << " metatype: " << e->meta_type << " valuetype: " << e->value_type << endl;
+						}
+
+						cout << endl;
+*/
+						// Add entry as a new reocrd
+						meta_data_unpacked.push_back(new_record);
+					}
 
 					// We dont need to safe this download
 					delete file_id;
@@ -989,16 +1011,16 @@ vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, Rea
 				}
 			}
 
-			if (!skip_meta_entry)
-				new_entries.push_back(entry);
+//			if (!skip_meta_entry)
+//				new_entries.push_back(entry);
 
 		}	// for (MetaDataEntry* entry : m->entries)
-
+/*
 		if (!m->skip_record) {
 			m->entries = new_entries;
 			meta_data_unpacked.push_back(m);
 		}
-
+*/
 	}	// for (Metadata* m : meta_data)
 
 	return meta_data_unpacked;
