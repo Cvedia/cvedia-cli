@@ -439,7 +439,7 @@ int StartExport(map<string,string> options) {
 		LOG(INFO) << mapping->id << ": " << mapping->name;
 	}
 
-	for (int iter=0;iter<gIterations;iter++) {
+	for (int iter=0;iter<gIterations&&gInterrupted==false;iter++) {
 
 		CurlReader *p_reader = new CurlReader();
 		p_reader->SetNumThreads(gDownloadThreads);
@@ -451,7 +451,7 @@ int StartExport(map<string,string> options) {
 		// Fetch basic stats on export
 		int num_batches = ceil(batch_size / (float)gBatchSize);
 
-		StartFeedThread(options, 0);
+		StartFeedThread(options, 0, iter);
 		
 		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
@@ -593,7 +593,7 @@ int GenerateMeanOnline(map<string,string> options) {
 
 	options["api_random"] = 1;
 
-	StartFeedThread(options, 0);
+	StartFeedThread(options, 0, 0);
 	
 	int iteration = 1;
 
@@ -1148,7 +1148,7 @@ int VerifyApi(map<string,string> options) {
 
 	for (;batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
-		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+		vector<Metadata* > meta_data = FetchBatch(options, batch_idx, 0);
 
 		if (meta_data.size() == 0) {
 			LOG(WARNING) << "No metadata returned by API, end of dataset?";

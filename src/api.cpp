@@ -195,12 +195,12 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 	return meta;
 }
 
-void StartFeedThread(map<string,string> options, int batch_idx) {
+void StartFeedThread(map<string,string> options, int batch_idx, int iteration) {
 	
 	gTerminateReadahead = false;
 
 	LOG(INFO) << "Starting feed readahead thread";
-	th_readahead = thread(ReadaheadBatch, options, batch_idx);	
+	th_readahead = thread(ReadaheadBatch, options, batch_idx, iteration);	
 }
 
 void StopFeedThread() {
@@ -211,11 +211,11 @@ void StopFeedThread() {
 	th_readahead.join();
 }
 
-void ReadaheadBatch(map<string,string> options, int batch_idx) {
+void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 
 	do {
 
-		vector<Metadata* > feed = FetchBatch(options, batch_idx);
+		vector<Metadata* > feed = FetchBatch(options, batch_idx, iteration);
 
 		if (feed.size() == 0) {
 			LOG(DEBUG) << "Feed reader finished at batch_idx " << batch_idx;
@@ -243,12 +243,13 @@ void ReadaheadBatch(map<string,string> options, int batch_idx) {
 	} while(gTerminateReadahead == false);
 }
 
-vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
+vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int iteration) {
 
 	vector<Metadata* > meta_vector;
 
 	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
+	api_url = ReplaceString(api_url, "$ITERATION", to_string(iteration));
 	if (options.count("api_random") == 1) {
 		api_url = ReplaceString(api_url, "$OFFSET", "0");		
 		api_url += "&random";
