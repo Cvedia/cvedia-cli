@@ -1,8 +1,8 @@
 # Cvedia CLI
 
-The CLI tool executes your export as preconfigured on the Cvedia platform. By passing the Job ID on the commandline that was shown on the website, all your filters and augmentations will be retrieved and applied to the chosen dataset.
+After setting up your project on https://cvedia.com/ you have the ability to Export your training set. The export provides you with a command line argument that can be used to run this tool. The CLI takes care of downloading and storing all the content you have predefined in your project.
 
-It supports saving the export in several formats and more will be added over time. Currently the following frameworks and file formats are supported:
+Various storage engines are supported for writing your training set to disk. The list below will be expanded once more engines are made available:
 
 **Caffe**
 - CaffeImageData
@@ -13,3 +13,5 @@ It supports saving the export in several formats and more will be added over tim
 
 **Generic**
 - CSV
+
+The TFRecords engine also serves as an example on how to write your own custom Python output engine. 
