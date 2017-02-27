@@ -40,6 +40,8 @@ private:
 
 	CURLM* mMultiHandle;
 
+	bool mTerminate;
+	
 	int mThreadsRunning;
 	int mThreadsMax;
 	

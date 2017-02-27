@@ -67,7 +67,7 @@ bool CsvWriter::CanHandle(string support) {
 	if (support == "integrity")
 		return true;
 	if (support == "blobs")
-		return true;
+		return false;
 
 	return false;
 }
@@ -149,8 +149,15 @@ string CsvWriter::WriteData(Metadata* meta) {
 
 				tmp_line += (tmp_line == "" ? "\""  : ",") + val;
 			}
-
 			output_values[e->id] = tmp_line + "\"";
+		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+
+
+			if (e->dtype == "float") {
+				output_values[e->id] += to_string(e->float_value);
+			} else if (e->dtype == "int") {
+				output_values[e->id] += to_string(e->int_value);
+			}
 		}
 	}
 

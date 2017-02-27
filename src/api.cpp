@@ -195,12 +195,12 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 	return meta;
 }
 
-void StartFeedThread(map<string,string> options, int batch_idx) {
+void StartFeedThread(map<string,string> options, int batch_idx, int iteration) {
 	
 	gTerminateReadahead = false;
 
 	LOG(INFO) << "Starting feed readahead thread";
-	th_readahead = thread(ReadaheadBatch, options, batch_idx);	
+	th_readahead = thread(ReadaheadBatch, options, batch_idx, iteration);	
 }
 
 void StopFeedThread() {
@@ -211,14 +211,15 @@ void StopFeedThread() {
 	th_readahead.join();
 }
 
-void ReadaheadBatch(map<string,string> options, int batch_idx) {
+void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 
 	do {
 
-		vector<Metadata* > feed = FetchBatch(options, batch_idx);
+		vector<Metadata* > feed = FetchBatch(options, batch_idx, iteration);
 
 		if (feed.size() == 0) {
 			LOG(DEBUG) << "Feed reader finished at batch_idx " << batch_idx;
+			gTerminateReadahead = true;
 			return;
 		}
 
@@ -242,12 +243,13 @@ void ReadaheadBatch(map<string,string> options, int batch_idx) {
 	} while(gTerminateReadahead == false);
 }
 
-vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
+vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int iteration) {
 
 	vector<Metadata* > meta_vector;
 
 	string api_url = gApiUrl + gAPIVersion + "/" + gJobID + "/" + string(API_FUNCTION_FETCH_BATCH);
 	api_url = ReplaceString(api_url, "$BATCHSIZE", to_string(gBatchSize));
+	api_url = ReplaceString(api_url, "$ITERATION", to_string(iteration));
 	if (options.count("api_random") == 1) {
 		api_url = ReplaceString(api_url, "$OFFSET", "0");		
 		api_url += "&random";
@@ -265,7 +267,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx) {
 		meta_vector = ParseFeed(data_str.c_str());
 	}
 
-	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes from API";
+	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
 
 	return meta_vector;
 }
@@ -491,6 +493,8 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 					for (int value_idx = 0; value_idx < value_size; ++value_idx) {
 						meta_entry->string_value.push_back(entry_itr->value[value_idx].GetString());
 					}
+				} else if (entry_itr->value.IsString()) {
+					meta_entry->string_value.push_back(entry_itr->value.GetString());					
 				}
 			} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 				if (meta_entry->dtype == "") {
