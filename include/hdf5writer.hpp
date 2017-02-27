@@ -46,8 +46,8 @@ public:
 
 private:
 
-	virtual bool ValidateData(vector<Metadata* > meta);
 	virtual string PrepareData(Metadata* meta);
+	virtual string GenerateHash(Metadata* meta);
 
 	const DataType& ConvertDtype(string dtype);
 	void AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype);

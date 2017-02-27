@@ -57,27 +57,27 @@ Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
 
 Hdf5Writer::~Hdf5Writer() {
 
-	if (mTrainFile.is_open()) {
-		mTrainFile.close();
-		if (mH5File[METADATA_TRAIN] != NULL) {
-			mH5File[METADATA_TRAIN]->close();
-			delete mH5File[METADATA_TRAIN];
-		}
-	}
-	if (mTestFile.is_open()) {
-		mTestFile.close();
-		if (mH5File[METADATA_TEST] != NULL) {
-			mH5File[METADATA_TEST]->close();
-			delete mH5File[METADATA_TEST];
-		}
-	}
-	if (mValidateFile.is_open()) {
-		mValidateFile.close();
-		if (mH5File[METADATA_VALIDATE] != NULL) {
-			mH5File[METADATA_VALIDATE]->close();
-			delete mH5File[METADATA_VALIDATE];
-		}
-	}
+	// if (mTrainFile.is_open()) {
+	// 	mTrainFile.close();
+	// 	if (mH5File[METADATA_TRAIN] != NULL) {
+	// 		mH5File[METADATA_TRAIN]->close();
+	// 		delete mH5File[METADATA_TRAIN];
+	// 	}
+	// }
+	// if (mTestFile.is_open()) {
+	// 	mTestFile.close();
+	// 	if (mH5File[METADATA_TEST] != NULL) {
+	// 		mH5File[METADATA_TEST]->close();
+	// 		delete mH5File[METADATA_TEST];
+	// 	}
+	// }
+	// if (mValidateFile.is_open()) {
+	// 	mValidateFile.close();
+	// 	if (mH5File[METADATA_VALIDATE] != NULL) {
+	// 		mH5File[METADATA_VALIDATE]->close();
+	// 		delete mH5File[METADATA_VALIDATE];
+	// 	}
+	// }
 }
 
 WriterStats Hdf5Writer::GetStats() {
@@ -122,65 +122,6 @@ int Hdf5Writer::Initialize(DatasetMetadata* dataset_meta, int mode) {
 	return 0;
 }
 
-bool Hdf5Writer::ValidateData(vector<Metadata* > meta) {
-	// Only perform initialization once
-	if (!mInitialized) {
-
-
-		Metadata *m = meta[0];
-		DSetCreatPropList prop;
-
-
-		for (MetadataEntry* e : m->entries) {
-
-			int dataDim = 0;
-
-			// Start the actual write
-			if (e->value_type == METADATA_VALUE_TYPE_RAW) {
-				if (e->dtype == "uint8")
-					dataDim = e->uint8_raw_data.size();
-				else if (e->dtype == "float")
-					dataDim = e->float_raw_data.size();
-				else {
-					LOG(ERROR) << string("Unsupported dtype specified for METADATA_VALUE_TYPE_RAW: " + e->dtype).c_str();
-					return false;
-				}
-			} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
-				if (e->dtype == "int")
-					dataDim = 1;
-				else if (e->dtype == "float")
-					dataDim = 1;
-				else {
-					LOG(ERROR) << string("Unsupported dtype specified for METADATA_VALUE_TYPE_NUMERIC: " + e->dtype).c_str();
-					return false;
-				}
-			} else {
-				LOG(ERROR) << string("Unsupported value type specified: " + e->value_type).c_str();
-				return false;
-			}
-
-			// We start with 0 entries and can scale endlessly
-			hsize_t dims[2] 		= {0, dataDim};	
-			hsize_t maxdims[2] 	= {H5S_UNLIMITED, dataDim};
-			hsize_t chunk_dims[2] = {2, dataDim};
-			mSpace = new DataSpace(2, dims, maxdims);
-			prop.setChunk(2, chunk_dims);
-
-			// Create the chunked dataset.  Note the use of pointer.
-			for(auto const& file : mH5File) {
-				mDataSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet(m->setname, (e->dtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSpace, prop));
-			}
-			LOG(DEBUG) << string("mDataDim = " + to_string(dataDim));
-
-		}
-
-		mInitialized = true;
-	}
-
-	return true;
-}
-
-
 string Hdf5Writer::PrepareData(Metadata* meta) {
 
 	string file_format = "$FILENAME $CATEGORY\n";
@@ -196,18 +137,28 @@ int Hdf5Writer::Finalize() {
 }
 
 int Hdf5Writer::BeginWriting() {
-		// Open all output sets on disk in append mode
+	// Open all output sets on disk in append mode
 	for (DatasetSet s : mDatasetMetadata->sets) {
 		LOG(INFO) << mBasePath;
 		LOG(INFO) << s.set_name;
 		mSetFile[s.set_name].open(mBasePath + s.set_name + ".txt", ios::out | ios::app);
+		LOG(INFO) << "msetFile .open";
 		if (!mSetFile[s.set_name].is_open()) {
 			LOG(ERROR) << "Failed to open: " << mBasePath << s.set_name << ".txt";
 			return -1;			
 		}		
 
 		try {
-			mH5File[s.set_name] = new H5File(mBasePath + s.set_name + ".h5", H5F_ACC_TRUNC);
+			LOG(INFO) << "Before New h5file";
+			if(mH5File[s.set_name] != NULL ){
+				LOG(INFO) << "Reopen";
+				// mH5File[s.set_name]->reOpen();
+				mH5File[s.set_name]->openFile(mBasePath + s.set_name + ".h5", H5F_ACC_RDWR);
+			} else {
+				LOG(INFO) << "new h5file";
+				mH5File[s.set_name] = new H5File(mBasePath + s.set_name + ".h5", H5F_ACC_TRUNC);
+			}
+			LOG(INFO) << "New h5file";
 			mSetFile[s.set_name] << mBasePath << s.set_name +".h5" << endl;
 		} catch (H5::Exception e) {
 			LOG(ERROR) << "Failed to create: " + mBasePath + s.set_name + ".h5";
@@ -224,58 +175,103 @@ int Hdf5Writer::BeginWriting() {
 string Hdf5Writer::WriteData(Metadata* meta) {
 	LOG(INFO) << "WriteData";
 
-	if (!mInitialized) {
-		LOG(ERROR) << "Must call Initialize() first";
-		return "";
-	}
-
 	if(!mSetFile.count(meta->setname)){
 		LOG(ERROR) << "Set file does not exist " << meta->setname;
 	}
 
 	void *ptr = NULL;
 	string dtype;
+	bool initializedDatasets = !mDataSet.empty();
 
 	for (MetadataEntry* e : meta->entries) {
+		int dataDim = 0;
 
 		void *tmp_ptr = NULL;
 		if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
-			if (e->dtype == "uint8")
+			if (e->dtype == "uint8"){
 				tmp_ptr = &e->uint8_raw_data[0];
-			else if (e->dtype == "float")
+				dataDim = e->uint8_raw_data.size();
+			}
+			else if (e->dtype == "float"){
 				tmp_ptr = &e->float_raw_data[0];
-			// else {
-			// 	e->dtype = "uint8";
-			// 	tmp_ptr = &e->image_data[0];
-			// }
+				dataDim = e->float_raw_data.size();
+			} else { //dtype is ""
+				tmp_ptr = &e->image_data[0];
+				dataDim = e->image_data.size();
+				// &e->image_data[0], e->image_data.size()
+				// dataDim = 1;
+			}
 		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
-
-			if (e->dtype == "int")
+			if (e->dtype == "int"){
 				tmp_ptr = &e->int_value;
-			else if (e->dtype == "float")
+				dataDim = 1;
+			}
+			else if (e->dtype == "float"){
 				tmp_ptr = &e->float_value;		
+				dataDim = 1;
+			}
 		}
 		LOG(INFO) << "ValueType: " << e->value_type;
+		LOG(INFO) << "DType: " << e->dtype;
+		LOG(INFO) << "Datadim: " << dataDim;
 
 		dtype = e->dtype;
 		ptr = tmp_ptr;
 
-		// mDataSet[meta->setname][e->id] = 
 
+		if(initializedDatasets == false ){
+			LOG(INFO) << "Initializing datasets";
+			//Due to api limitations ATM, we need to initialize datasets here, because its the first place where we know the datatype
+			// @TODO: Move this to beginWriting
+			// We start with 0 entries and can scale endlessly
+			LOG(INFO) << "Datadim: " << dataDim;
+			DSetCreatPropList prop;
+			LOG(INFO) << "A1";
+			// hsize_t dims[2] 		= {1, dataDim};	
+			hsize_t dims[2] 		= {0, dataDim};	
+			// hsize_t maxdims[2] 	= {H5S_UNLIMITED, dataDim};
+			hsize_t maxdims[2] 	= {H5S_UNLIMITED, H5S_UNLIMITED};
+			LOG(INFO) << "A2";
+			hsize_t chunk_dims[2] = {2, dataDim};
+			mSpace = new DataSpace(2, dims, maxdims);
+			LOG(INFO) << "A3";
+			prop.setChunk(2, chunk_dims);
+			LOG(INFO) << "A4";
+
+			// Create the chunked dataset.  Note the use of pointer.
+			for(auto const& file : mH5File) {
+				LOG(INFO) << "For mh5file";
+				mDataSet[file.first] 	= new DataSet(mH5File[file.first]->createDataSet(meta->setname, (e->dtype == "uint8" ? PredType::NATIVE_UCHAR : PredType::NATIVE_FLOAT), *mSpace, prop));
+			}
+
+			LOG(INFO) << "Initialiazed datasets";
+			initializedDatasets = true;
+		}
+
+		// Start the actual write
+		LOG(INFO) << "Datadim before AppendEntry: " << dataDim;
+
+		AppendEntry(mDataSet[meta->setname], ptr, dataDim, ConvertDtype(dtype));
 	}
 
-	// Start the actual write
-	LOG(INFO) << "Meta setname: " << meta->setname;
-	AppendEntry(mDataSet[meta->setname], ptr, dataDim, ConvertDtype(dtype));
+
 	
 	//must return md5 here
-	return "";
+	return "file=" + meta->setname + ".h5;hash=" + GenerateHash(meta);
+}
+
+string Hdf5Writer::GenerateHash(Metadata* meta) {
+	return md5(meta->setname + meta->hash);
 }
 
 int Hdf5Writer::EndWriting() {
+	LOG(INFO) << "EndWriting, closing stuff ";
+
 	// Close all open files
 	for (DatasetSet s : mDatasetMetadata->sets) {
+		LOG(INFO) << "Closing " << s.set_name;
 		mSetFile[s.set_name].close();
+		mH5File[s.set_name]->close();
 	}
 
 	return 0;
@@ -298,24 +294,28 @@ const DataType& Hdf5Writer::ConvertDtype(string dtype) {
 }
 
 void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype) {
-	LOG(INFO) << "HDF5 Append entry";
-
+	LOG(INFO) << "AppendEntry data_size: " << data_size;
+	sleep(1);
 	// Get current extent and increase by 1
 	DataSpace tmp_space = dataset->getSpace();
-	LOG(INFO) << "HDF5 Append entry0";
 
 	int num_dims = tmp_space.getSimpleExtentNdims();
 
+	LOG(INFO) << "num_dims: " << num_dims;
+	LOG(INFO) << "ptr: " << data_ptr;
+
+
 	hsize_t sp_size[num_dims];
-	LOG(INFO) << "HDF5 Append entry1";
 
 	tmp_space.getSimpleExtentDims(sp_size, NULL);
 
 	hsize_t new_dim[2] 	= {sp_size[0]+1, data_size};
-	LOG(INFO) << "HDF5 Append entry2";
 
 	// Extend the DataSet with 1 record
+	LOG(INFO) << "new_dim: " << new_dim[0];
+	LOG(INFO) << "new_dim: " << new_dim[1];
 	dataset->extend(new_dim);
+	LOG(INFO) << "Extended";
 
 	// Find the end of the file and append new data. 
 	DataSpace filespace = dataset->getSpace();
@@ -324,11 +324,12 @@ void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size
 	hsize_t offset[2] = {sp_size[0], 0};
 	// We want to write a single entry 
 	hsize_t startdim[2] = {1, data_size};
-	LOG(INFO) << "HDF5 Append entry3";
+	LOG(INFO) << "Data size: " << data_size;
 
 	filespace.selectHyperslab(H5S_SELECT_SET, startdim, offset);
 	
 	DataSpace memspace(2, startdim, NULL);
+	LOG(INFO) << "startdim: " << startdim;
 
 	dataset->write(data_ptr, dtype, memspace, filespace);
 	LOG(INFO) << "End HDF5 Append entry";

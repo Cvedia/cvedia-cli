@@ -46,7 +46,7 @@ using namespace rapidjson;
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
-//#include "hdf5writer.hpp"
+#include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "imagemean.hpp"
 #include "caffeimagedata.hpp"
@@ -400,7 +400,7 @@ int StartExport(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-//		p_writer = new Hdf5Writer(gExportName, options);
+		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -759,6 +759,7 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 	int to_write = meta_data.size();
 	int cur_write = 0;
 
+	LOG(INFO) << "calling BeginWriting() from cvedia.cpp";
 	if (p_writer->BeginWriting() != 0) {
 		LOG(ERROR) << "BeginWriting() failed ";
 		return false;
@@ -835,7 +836,6 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 				}
 			}
 		}
-		LOG(INFO) << "EndWriting() ok ";
 
 		if (!m->skip_record) {
 			string writer_res = p_writer->WriteData(m);
@@ -870,6 +870,7 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 		cur_write++;
 	}
 
+	LOG(INFO) << "calling EndWriting() from cvedia.cpp";
 	if (p_writer->EndWriting() != 0) {
 		LOG(ERROR) << "EndWriting() failed ";
 		return false;
@@ -1075,7 +1076,7 @@ int VerifyLocal(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-//		p_writer = new Hdf5Writer(gExportName, options);
+		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
