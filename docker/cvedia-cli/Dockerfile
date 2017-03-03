@@ -4,7 +4,7 @@ RUN apt-get update
 RUN export DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y install autoconf pkg-config vim automake libtool curl make g++ unzip git gawk python3-dev python3-pip libcurl3 hdf5-tools hdf5-helpers libcurl4-openssl-dev libhdf5-dev cmake build-essential 
 RUN apt-get -y install libc6-dev-i386 g++-multilib #support for 32 bit install
-RUN apt-get -y install libprotobuf-dev libleveldb-dev libsnappy-dev libhdf5-serial-dev protobuf-compiler lua5.2 liblua5.2-dev libssl-dev libsqlite3-dev ibgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev libdc1394-22-dev
+RUN apt-get -y install libprotobuf-dev libleveldb-dev libsnappy-dev libhdf5-serial-dev protobuf-compiler lua5.2 liblua5.2-dev libssl-dev libsqlite3-dev ibgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev libdc1394-22-dev libopencv-dev
 RUN pip3 install pycurl numpy h5py requests
 
 RUN mkdir /home/root
