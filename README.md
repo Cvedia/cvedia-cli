@@ -16,25 +16,6 @@ Various storage engines are supported for writing your training set to disk. The
 
 The TFRecords engine also serves as an example on how to write your own custom Python output engine. 
 
-# Cvedia CLI
-
-After setting up your project on https://cvedia.com/ you have the ability to Export your training set. The export provides you with a command line argument that can be used to run this tool. The CLI takes care of downloading and storing all the content you have predefined in your project.
-
-Various storage engines are supported for writing your training set to disk. The list below will be expanded once more engines are made available:
-
-**Caffe**
-- CaffeImageData
-- HDF5
-
-**TensorFlow**
-- TFRecords
-
-**Generic**
-- CSV
-
-The TFRecords engine also serves as an example on how to write your own custom Python output engine. 
-
-
 # Installation
 
 ## Prerequisites ##
