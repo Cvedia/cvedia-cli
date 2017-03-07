@@ -43,7 +43,7 @@ apt-get -y install autoconf pkg-config vim automake libtool curl make g++ \
   libilmbase-dev libilmbase12 libopenexr-dev libopenexr22 libpangox-1.0-0 \
   libv4l-0 libv4lconvert0 libxmu6 libxt6
 ```
-**Step 4:** Install necessary python pachages
+**Step 4:** Install necessary python packages
 ```bash
 pip3 install pycurl numpy h5py requests
 ```
