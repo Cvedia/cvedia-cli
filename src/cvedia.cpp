@@ -232,10 +232,8 @@ int main(int argc, char* argv[]) {
 		gVerifyApi = true;
 	}
 
-	LOG(INFO) << "Going to verify data????";
 
 	if (options[VERIFYLOC].count() == 1) {
-		LOG(INFO) << "Going to verify data";
 		gVerifyLocal = true;
 	}
 	
@@ -352,7 +350,6 @@ int main(int argc, char* argv[]) {
 
 		StartExport(mod_options);
 	}
-	LOG(INFO) << "End main.";
 	
 	return 1;
 }
@@ -393,7 +390,6 @@ int StartExport(map<string,string> options) {
 	time_t seconds;
 
 	IDataWriter *p_writer = NULL;
-	LOG(INFO) << "Output format: " << gOutputFormat;
 
 	if (gOutputFormat == "csv") {
 		p_writer = new CsvWriter(gExportName, options);
@@ -760,7 +756,6 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 	int to_write = meta_data.size();
 	int cur_write = 0;
 
-	LOG(INFO) << "calling BeginWriting() from cvedia.cpp";
 	if (p_writer->BeginWriting() != 0) {
 		LOG(ERROR) << "BeginWriting() failed ";
 		return false;
@@ -832,7 +827,6 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 							e->image_data.insert(e->image_data.end(), img.ptr<uchar>(i), img.ptr<uchar>(i)+img.cols);
 						}
 					}
-					LOG(INFO) << "CopyTo";
 					// img.row(0).copyTo(e->float_raw_data);
 				}
 			}
@@ -871,7 +865,6 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 		cur_write++;
 	}
 
-	LOG(INFO) << "calling EndWriting() from cvedia.cpp";
 	if (p_writer->EndWriting() != 0) {
 		LOG(ERROR) << "EndWriting() failed ";
 		return false;
@@ -1105,7 +1098,6 @@ int VerifyLocal(map<string,string> options) {
 			map<string, string> keyval_map;
 
 			string writer_res = p_writer->CheckIntegrity(file);
-			LOG(INFO) << "Result from check integrity: " << writer_res;
 
 			for (const string& tag : split(writer_res, ';')) {
 				auto key_val = split(tag, '=');
@@ -1114,8 +1106,6 @@ int VerifyLocal(map<string,string> options) {
 
 			string record_hash = keyval_map["hash"];
 			result = keyval_map["result"];
-			LOG(INFO) << "Record_hash: " << record_hash;
-			LOG(INFO) << "result: " << result;
 
 			if (record_hash != "") {
 				LOG(TRACE) << "Checking for record hash " << record_hash;
