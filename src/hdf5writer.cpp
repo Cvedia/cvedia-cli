@@ -56,28 +56,6 @@ Hdf5Writer::Hdf5Writer(string export_name, map<string, string> options) {
 }
 
 Hdf5Writer::~Hdf5Writer() {
-
-	// if (mTrainFile.is_open()) {
-	// 	mTrainFile.close();
-	// 	if (mH5File[METADATA_TRAIN] != NULL) {
-	// 		mH5File[METADATA_TRAIN]->close();
-	// 		delete mH5File[METADATA_TRAIN];
-	// 	}
-	// }
-	// if (mTestFile.is_open()) {
-	// 	mTestFile.close();
-	// 	if (mH5File[METADATA_TEST] != NULL) {
-	// 		mH5File[METADATA_TEST]->close();
-	// 		delete mH5File[METADATA_TEST];
-	// 	}
-	// }
-	// if (mValidateFile.is_open()) {
-	// 	mValidateFile.close();
-	// 	if (mH5File[METADATA_VALIDATE] != NULL) {
-	// 		mH5File[METADATA_VALIDATE]->close();
-	// 		delete mH5File[METADATA_VALIDATE];
-	// 	}
-	// }
 }
 
 WriterStats Hdf5Writer::GetStats() {
@@ -132,12 +110,12 @@ string Hdf5Writer::PrepareData(Metadata* meta) {
 }
 
 int Hdf5Writer::Finalize() {
-
 	return 0;
 }
 
 int Hdf5Writer::BeginWriting() {
 	// Open all output sets on disk in append mode
+	string writeCountStr =  std::to_string(writeCount);
 	for (DatasetSet s : mDatasetMetadata->sets) {
 		LOG(INFO) << mBasePath;
 		LOG(INFO) << s.set_name;
@@ -153,20 +131,21 @@ int Hdf5Writer::BeginWriting() {
 			if(mH5File[s.set_name] != NULL ){
 				LOG(INFO) << "Reopen";
 				// mH5File[s.set_name]->reOpen();
-				mH5File[s.set_name]->openFile(mBasePath + s.set_name + ".h5", H5F_ACC_RDWR);
+				mH5File[s.set_name]->openFile(mBasePath + s.set_name + writeCountStr + ".h5", H5F_ACC_RDWR);
 			} else {
 				LOG(INFO) << "new h5file";
-				mH5File[s.set_name] = new H5File(mBasePath + s.set_name + ".h5", H5F_ACC_TRUNC);
+				mH5File[s.set_name] = new H5File(mBasePath + s.set_name + writeCountStr + ".h5", H5F_ACC_TRUNC);
 			}
 			LOG(INFO) << "New h5file";
-			mSetFile[s.set_name] << mBasePath << s.set_name +".h5" << endl;
+			mSetFile[s.set_name] << mBasePath << s.set_name << writeCountStr << ".h5" << endl;
 		} catch (H5::Exception e) {
-			LOG(ERROR) << "Failed to create: " + mBasePath + s.set_name + ".h5";
+			LOG(ERROR) << "Failed to create: " + mBasePath + s.set_name << writeCountStr << ".h5";
 			LOG(ERROR) << e.getCDetailMsg();
 			return -1;						
 		}
 
 	}
+	writeCount++;
 
 	return 0;
 }
@@ -272,7 +251,11 @@ int Hdf5Writer::EndWriting() {
 		LOG(INFO) << "Closing " << s.set_name;
 		mSetFile[s.set_name].close();
 		mH5File[s.set_name]->close();
+
+		mH5File.erase(s.set_name);
+		mDataSet.erase(s.set_name);
 	}
+
 
 	return 0;
 }
@@ -295,44 +278,54 @@ const DataType& Hdf5Writer::ConvertDtype(string dtype) {
 
 void Hdf5Writer::AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype) {
 	LOG(INFO) << "AppendEntry data_size: " << data_size;
-	sleep(1);
-	// Get current extent and increase by 1
-	DataSpace tmp_space = dataset->getSpace();
 
-	int num_dims = tmp_space.getSimpleExtentNdims();
+	try{
+		// Get current extent and increase by 1
+		DataSpace tmp_space = dataset->getSpace();
 
-	LOG(INFO) << "num_dims: " << num_dims;
-	LOG(INFO) << "ptr: " << data_ptr;
+		int num_dims = tmp_space.getSimpleExtentNdims();
+
+		LOG(INFO) << "num_dims: " << num_dims;
+		LOG(INFO) << "ptr: " << data_ptr;
 
 
-	hsize_t sp_size[num_dims];
+		hsize_t sp_size[num_dims];
 
-	tmp_space.getSimpleExtentDims(sp_size, NULL);
+		tmp_space.getSimpleExtentDims(sp_size, NULL);
 
-	hsize_t new_dim[2] 	= {sp_size[0]+1, data_size};
+		hsize_t new_dim[2] 	= {sp_size[0]+1, data_size};
 
-	// Extend the DataSet with 1 record
-	LOG(INFO) << "new_dim: " << new_dim[0];
-	LOG(INFO) << "new_dim: " << new_dim[1];
-	dataset->extend(new_dim);
-	LOG(INFO) << "Extended";
+		// Extend the DataSet with 1 record
+		LOG(INFO) << "new_dim: " << new_dim[0];
+		LOG(INFO) << "new_dim: " << new_dim[1];
+		dataset->extend(new_dim);
+		LOG(INFO) << "Extended";
 
-	// Find the end of the file and append new data. 
-	DataSpace filespace = dataset->getSpace();
+		// Find the end of the file and append new data. 
+		DataSpace filespace = dataset->getSpace();
 
-	// Define the hyperslab position, this is where we write to
-	hsize_t offset[2] = {sp_size[0], 0};
-	// We want to write a single entry 
-	hsize_t startdim[2] = {1, data_size};
-	LOG(INFO) << "Data size: " << data_size;
+		int num_dims_filespace = filespace.getSimpleExtentNdims();
+		LOG(INFO) << "filespace datasize: " << num_dims_filespace;
 
-	filespace.selectHyperslab(H5S_SELECT_SET, startdim, offset);
-	
-	DataSpace memspace(2, startdim, NULL);
-	LOG(INFO) << "startdim: " << startdim;
 
-	dataset->write(data_ptr, dtype, memspace, filespace);
-	LOG(INFO) << "End HDF5 Append entry";
+		// Define the hyperslab position, this is where we write to
+		hsize_t offset[2] = {sp_size[0], 0};
+		// We want to write a single entry 
+		hsize_t startdim[2] = {1, data_size};
+		LOG(INFO) << "Data size: " << data_size;
+
+		filespace.selectHyperslab(H5S_SELECT_SET, startdim, offset);
+		
+		DataSpace memspace(2, startdim, NULL);
+		LOG(INFO) << "startdim: " << startdim;
+
+		dataset->write(data_ptr, dtype, memspace, filespace);
+		LOG(INFO) << "End HDF5 Append entry";
+	} catch(...) {
+		LOG(ERROR) << "Retrying...";
+		AppendEntry(dataset, data_ptr, data_size, dtype);
+	}
+
 }
 
 string Hdf5Writer::CheckIntegrity(string file_name) {

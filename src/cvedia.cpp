@@ -352,6 +352,7 @@ int main(int argc, char* argv[]) {
 
 		StartExport(mod_options);
 	}
+	LOG(INFO) << "End main.";
 	
 	return 1;
 }

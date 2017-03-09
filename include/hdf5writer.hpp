@@ -45,7 +45,7 @@ public:
 	map<string, string> mModuleOptions;
 
 private:
-
+	int writeCount = 1;
 	virtual string PrepareData(Metadata* meta);
 	virtual string GenerateHash(Metadata* meta);
 
