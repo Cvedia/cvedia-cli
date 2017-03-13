@@ -14,7 +14,7 @@ using namespace rapidjson;
 // API Calls defined
 #define API_FUNCTION_HELLO			"welcome"
 #define API_FUNCTION_COUNT			"meta"
-#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$OFFSET"
+#define API_FUNCTION_FETCH_BATCH	"fetch?size=$BATCHSIZE&offset=$OFFSET&ssl=0&iteration=$ITERATION"
 
 #define METADATA_VALUE_TYPE_IMAGE	"image"
 #define METADATA_VALUE_TYPE_RAW		"raw"
@@ -79,7 +79,7 @@ struct MetadataEntry {
 	int data_width;
 	int data_height;
 
-	vector<uint8_t> image_data;	// Difference between image_data and uint8_raw_data is that image_data is PNG/JPEG compressed
+	vector<unsigned char> image_data;	// Difference between image_data and uint8_raw_data is that image_data is PNG/JPEG compressed
 	vector<uint8_t> uint8_raw_data;
 	vector<float> float_raw_data;
 
@@ -104,12 +104,12 @@ extern mutex feed_mutex;
 int InitializeApi();
 string WriteImageData(string filename, uint8_t* image_data, unsigned int len, bool dir_tree);
 DatasetMetadata* GetDatasetMetadata(string job_id);
-vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx);
+vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int iteration);
 vector<Metadata* > ParseFeed(const char* feed);
 vector<MetadataEntry* > ParseTarFeed(const char* feed);
 Metadata* ParseDataEntry(const Value& entryObj, Metadata* meta_output);
-void ReadaheadBatch(map<string,string> options, int batch_idx);
-void StartFeedThread(map<string,string> options, int batch_idx);
+void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration);
+void StartFeedThread(map<string,string> options, int batch_idx, int iteration);
 void StopFeedThread();
 
 #endif

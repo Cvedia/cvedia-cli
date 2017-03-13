@@ -27,6 +27,8 @@
 #include <sys/ioctl.h>
 #include <archive.h>
 #include <archive_entry.h> 
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -40,24 +42,28 @@ using namespace rapidjson;
 #include "functions.hpp"
 #include "easylogging++.h"
 #include "optionparser.h"
+#include "metadb.hpp"
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
-#include "hdf5writer.hpp"
+//#include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "luawriter.hpp"
+#include "luamodules.hpp"
+#include "imagemean.hpp"
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
-#include "luamodules.hpp"
-#include "metadb.hpp"
+
+extern bool gTerminateReadahead;
 
 INITIALIZE_EASYLOGGINGPP
 
 // Initialize global variables
 int gDebug 		= 1;
 
-int gBatchSize 	= 256;
-int gDownloadThreads = 100;
+int gBatchSize 			= 256;
+int gDownloadThreads 	= 100;
+int gIterations 		= 1;
 
 vector<export_module> gModules;
 
@@ -67,6 +73,12 @@ int lTermWidth = 80;
 
 bool gVerifyApi = false;
 bool gVerifyLocal = false;
+bool gSubtractMean = false;
+int gGenerateMean = MEAN_NONE;
+
+ImageMean* gMean = NULL;
+
+
 string gBaseDir = "";
 string gExportName = "";
 string gWorkingDir = "";
@@ -83,7 +95,8 @@ int gResume = MODE_NEW;
 void SigHandler(int s);
 bool gInterrupted = false;
 
-enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, LOGLEVEL, VERIFYAPI, VERIFYLOC, RESUME, IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
+enum  optionIndex { UNKNOWN, HELP, JOB, DIR, NAME, API, OUTPUT, BATCHSIZE, THREADS, ITERATIONS, LOGLEVEL, VERIFYAPI, VERIFYLOC, GLOBALMEAN, CHANNELMEAN, PIXELMEAN, SUBTRACTMEAN, SAVEMEAN, RESUME, 
+	IMAGES_SAME_DIR, MOD_TFRECORDS_PER_SHARD, IMAGES_EXTERNAL};
 
 int main(int argc, char* argv[]) {
 
@@ -93,7 +106,7 @@ int main(int argc, char* argv[]) {
 	supported_output.push_back("CSV");
 	supported_output.push_back("CaffeImageData");
 #ifdef HAVE_HDF5
-	supported_output.push_back("HDF5");
+//	supported_output.push_back("HDF5");
 #endif
 #ifdef HAVE_PYTHON
 
@@ -173,6 +186,7 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({DIR,    	0,"d", "dir",option::Arg::Required, "  --dir=<path>, -d <path>  \tBase path for storing exported data (default: .)" });
 	usage_vec.push_back({NAME,    	0,"n", "name",option::Arg::Required, "  --name=<arg>, -n <arg>  \tName used for storing data on disk (defaults to jobid)" });
 	usage_vec.push_back({RESUME,   	0,"" , "resume",option::Arg::None, "  --resume  \tResume downloading an existing job." });
+	usage_vec.push_back({ITERATIONS,0,"i", "iterations",option::Arg::Required, "  --iterations=<num>, -i <num>  \tNumber of times to download the specified Job ID. This can be used in conjunction with jobs that have a random augmentation (default: 1)" });
 	usage_vec.push_back({VERIFYAPI,	0,"" , "verify-api",option::Arg::None, "  --verify-api  \tVerify the state of an exported dataset with the Cvedia API." });
 	usage_vec.push_back({VERIFYLOC,	0,"" , "verify-local",option::Arg::None, "  --verify-local  \tPerform integrity check between an exported dataset and the local Meta Db" });
 	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
@@ -181,6 +195,12 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  });
 	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore images/blobs as files on disk. This is default for output formats that dont support binary storage" });
 	usage_vec.push_back({IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." });
+	usage_vec.push_back({UNKNOWN,   0,"", "",option::Arg::None, "\n\n\t##### Image Normalization #####\n" });
+	usage_vec.push_back({GLOBALMEAN,	0,"" , "generate-global-mean",option::Arg::None, "  --generate-global-mean  \tGenerate a global mean approximation using random online sampling." });
+	usage_vec.push_back({CHANNELMEAN,	0,"" , "generate-channel-mean",option::Arg::None, "  --generate-channel-mean  \tGenerate a per channel mean approximation using random online sampling." });
+	usage_vec.push_back({PIXELMEAN,	0,"" , "generate-pixel-mean",option::Arg::None, "  --generate-pixel-mean  \tGenerate a mean image approximation using random online sampling." });
+	usage_vec.push_back({SUBTRACTMEAN,	0,"" , "subtract-mean",option::Arg::None, "  --subtract-mean  \tSubtract the generated mean from all images." });
+	usage_vec.push_back({SAVEMEAN,	0,"" , "save-mean",option::Arg::None, "  --save-mean=<format>  \tWrite the generated mean to disk (image, csv, raw)" });
 
 	// Insert the python modules with their options
 	for (option::Descriptor desc : module_vec) {
@@ -247,10 +267,30 @@ int main(int argc, char* argv[]) {
 		gVerifyLocal = true;
 	}
 	
+	if (options[GLOBALMEAN].count() == 1) {
+		gGenerateMean = MEAN_GLOBAL;
+	}
+
+	if (options[CHANNELMEAN].count() == 1) {
+		gGenerateMean = MEAN_CHANNEL;
+	}
+
+	if (options[PIXELMEAN].count() == 1) {
+		gGenerateMean = MEAN_PIXEL;
+	}
+
+	if (options[SUBTRACTMEAN].count() == 1) {
+		gSubtractMean = true;
+	}
+
 	if (options[THREADS].count() == 1) {
 		gDownloadThreads = atoi(options[THREADS].arg);
 	}
 	
+	if (options[ITERATIONS].count() == 1) {
+		gIterations = atoi(options[ITERATIONS].arg);
+	}
+
 	if (options[IMAGES_EXTERNAL].count() == 1) {
 		mod_options["images-external"] = "1";
 	}
@@ -284,6 +324,8 @@ int main(int argc, char* argv[]) {
 		} else if (loglevel == "info") {
 			gLogLevel = el::Level::Info;
 		}
+	} else {
+		gLogLevel = el::Level::Info;
 	}
 
 	ConfigureLogger();
@@ -325,13 +367,18 @@ int main(int argc, char* argv[]) {
 
 	if (InitializeApi() == 0) {
 
-		if (gVerifyApi == true) {
+		if (gGenerateMean != MEAN_NONE) {
+			GenerateMeanOnline(mod_options);
+		} if (gVerifyApi == true) {
 			VerifyApi(mod_options);
+			return 1;
 		} else if (gVerifyLocal == true) {
 			VerifyLocal(mod_options);
+			return 1;
 		} else {
-			StartExport(mod_options);
 		}
+
+		StartExport(mod_options);
 	}
 	
 	return 1;
@@ -372,8 +419,6 @@ int StartExport(map<string,string> options) {
 
 	time_t seconds;
 
-	CurlReader *p_reader = new CurlReader();
-
 	IDataWriter *p_writer = NULL;
 
 	if (gOutputFormat == "csv") {
@@ -382,7 +427,7 @@ int StartExport(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-		p_writer = new Hdf5Writer(gExportName, options);
+//		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -397,8 +442,6 @@ int StartExport(map<string,string> options) {
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
 	}
-
-	p_reader->SetNumThreads(gDownloadThreads);
 
 	gDatasetMeta = GetDatasetMetadata(gJobID);
 	if (gDatasetMeta == NULL) {
@@ -416,31 +459,186 @@ int StartExport(map<string,string> options) {
 	}
 
 	bool can_resume = p_writer->CanHandle("resume");
-	bool can_store_blobs = p_writer->CanHandle("blobs");
 
 	if (!can_resume && gResume == true) {
 		LOG(ERROR) << "Resume not supported by output module";
 		return -1;
 	}
 
-	LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
+	LOG(INFO) << "Exporting the following sets:";
 
-	// Fetch basic stats on export
-	int num_batches = ceil(batch_size / (float)gBatchSize);
+	for (DatasetSet s : gDatasetMeta->sets) {
+		LOG(INFO) << s.set_name << " (" << s.set_perc << "%)";
+	}
 
-	StartFeedThread(options, 0);
+	LOG(INFO) << "Using the following fields:";
+	for (DatasetMapping* mapping : gDatasetMeta->mapping_by_id)	{
+		LOG(INFO) << mapping->id << ": " << mapping->name;
+	}
+
+	for (int iter=0;iter<gIterations&&gInterrupted==false;iter++) {
+
+		CurlReader *p_reader = new CurlReader();
+		p_reader->SetNumThreads(gDownloadThreads);
+
+
+		LOG(INFO) << "Iteration #" << to_string(iter+1);
+		LOG(INFO) << "Total expected dataset size is " << to_string(batch_size);
+
+		// Fetch basic stats on export
+		int num_batches = ceil(batch_size / (float)gBatchSize);
+
+		StartFeedThread(options, 0, iter);
+		
+		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+
+			unsigned int queued_downloads = 0;
+
+			vector<Metadata* > meta_data;
+
+			feed_mutex.lock();
+			if (batch_idx > 0 && feed_readahead.size() == 0) {
+				LOG(DEBUG) << "Readahead feed empty.. waiting for data.";
+			}
+			if (gTerminateReadahead == true) {
+				LOG(INFO) << "Reached end of feed but not all batches returned.";
+				break;
+			}
+
+			feed_mutex.unlock();
+
+			do {
+
+				feed_mutex.lock();
+				{
+					// New data is ready
+					if (feed_readahead.size() > 0) {
+						meta_data = feed_readahead.front();
+						feed_readahead.pop_front();
+						feed_mutex.unlock();
+						break;
+					}
+				}
+				feed_mutex.unlock();
+
+				// Wait for new data to come in
+				usleep(100000);
+
+			} while(1);
+
+	//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+
+			if (meta_data.size() == 0) {
+				LOG(WARNING) << "No metadata returned by API, end of dataset?";
+				return -1;
+			}
+
+			LOG(DEBUG) << "Starting download for batch #" << to_string(batch_idx);
+
+			seconds = time(NULL);
+
+			// Queue up all requests in this batch
+			for (Metadata* m : meta_data) {
+
+				if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
+					for (MetadataEntry* entry : m->entries) {
+
+						if (entry->url != "") {
+							p_reader->QueueUrl(md5(entry->url), entry->url);
+							queued_downloads++;
+						}
+					}
+				} else {
+					m->skip_record = true;
+					LOG(TRACE) << m->hash << " is already in hashes db";
+				}
+			}
+
+			ReaderStats stats = p_reader->GetStats();
+
+			// Loop until all downloads are finished
+			while (stats.num_reads_completed < queued_downloads) {
+
+				stats = p_reader->GetStats();
+
+				if (time(NULL) != seconds) {
+					DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+
+					seconds = time(NULL);
+				}
+
+				usleep(100);
+			}
+
+			// Display the 100% complete
+			DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
+			cout << endl;
+
+			// Update stats for last time
+			stats = p_reader->GetStats();
+
+			LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
+			LOG(INFO) << "Syncing batch to disk...";
+
+			p_reader->ClearStats();
+
+			// Downloading finished, gather all cURL responses
+			map<string, ReadRequest* > responses = p_reader->GetAllData();
+
+			vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
+
+			meta_data.clear();
+
+			WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+
+			p_reader->ClearData();
+
+			// We are completely done with the response data
+			for (auto& kv : responses) {
+				delete kv.second;
+			}
+
+			responses.clear();
+		}
+
+		StopFeedThread();
+
+		delete p_reader;
+	}
+
+	// Call finalize on the writer function
+	p_writer->Finalize();
+
+	return 0;
+}
+
+int GenerateMeanOnline(map<string,string> options) {
+
+	time_t seconds;
+
+	CurlReader *p_reader = new CurlReader();
+
+	p_reader->SetNumThreads(gDownloadThreads);
+
+	gDatasetMeta = GetDatasetMetadata(gJobID);
+	if (gDatasetMeta == NULL) {
+		LOG(ERROR) << "Failed to fetch metadata for dataset";
+		return -1;		
+	}
+
+	gMean = new ImageMean(MEAN_GLOBAL);
+
+	options["api_random"] = 1;
+
+	StartFeedThread(options, 0, 0);
 	
-	for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+	int iteration = 1;
+
+	while (gInterrupted == false && iteration < 4) {
 
 		unsigned int queued_downloads = 0;
 
 		vector<Metadata* > meta_data;
-
-		feed_mutex.lock();
-		if (batch_idx > 0 && feed_readahead.size() == 0) {
-			LOG(INFO) << "Readahead feed empty.. waiting for data.";
-		}
-		feed_mutex.unlock();
 
 		do {
 
@@ -461,31 +659,22 @@ int StartExport(map<string,string> options) {
 
 		} while(1);
 
-//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
-
 		if (meta_data.size() == 0) {
 			LOG(WARNING) << "No metadata returned by API, end of dataset?";
 			return -1;
 		}
-
-		LOG(INFO) << "Starting download for batch #" << to_string(batch_idx);
 
 		seconds = time(NULL);
 
 		// Queue up all requests in this batch
 		for (Metadata* m : meta_data) {
 
-			if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
-				for (MetadataEntry* entry : m->entries) {
+			for (MetadataEntry* entry : m->entries) {
 
-					if (entry->url != "") {
-						p_reader->QueueUrl(md5(entry->url), entry->url);
-						queued_downloads++;
-					}
+				if (entry->url != "") {
+					p_reader->QueueUrl(md5(entry->url), entry->url);
+					queued_downloads++;
 				}
-			} else {
-				m->skip_record = true;
-				LOG(TRACE) << m->hash << " is already in hashes db";
 			}
 		}
 
@@ -497,7 +686,7 @@ int StartExport(map<string,string> options) {
 			stats = p_reader->GetStats();
 
 			if (time(NULL) != seconds) {
-				DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+				DisplayProgress("Iter #" + to_string(iteration) + " ", stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads, "");
 
 				seconds = time(NULL);
 			}
@@ -506,243 +695,22 @@ int StartExport(map<string,string> options) {
 		}
 
 		// Display the 100% complete
-		DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
+		DisplayProgress("Iter #" + to_string(iteration) + " ", 1, stats.num_reads_completed, queued_downloads, "");
 		cout << endl;
 
 		// Update stats for last time
 		stats = p_reader->GetStats();
 
-		LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
-		LOG(INFO) << "Syncing batch to disk...";
+		LOG(DEBUG) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
 
 		p_reader->ClearStats();
 
 		// Downloading finished, gather all cURL responses
 		map<string, ReadRequest* > responses = p_reader->GetAllData();
 
-		// Same as the original meta_data vector except archives have been unpacked
-		// and their 'archive' entries removed. This all makes sure archives get 
-		// expanded in the same place inside the vector
-		vector<Metadata* > meta_data_unpacked;
+		vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
 
-		for (Metadata* m : meta_data) {
-			// Find the request for a specific filename
-
-			if (m->skip_record)
-				continue;
-
-			vector<MetadataEntry* > new_entries;
-
-			for (MetadataEntry* entry : m->entries) {
-
-				bool skip_meta_entry = false;
-
-				if (entry->url != "") {	// Did we download something ?
-					ReadRequest* req = responses[md5(entry->url)];
-
-					if (entry->value_type == METADATA_VALUE_TYPE_IMAGE || entry->value_type == METADATA_VALUE_TYPE_RAW) {
-						int r = ReadRequestToMetadataEntry(req, entry);
-
-						if (r == -1)
-							return -1;
-
-					} else if (entry->value_type == METADATA_VALUE_TYPE_ARCHIVE) {
-						// Archive found, start unpacking
-						struct archive_entry* a_entry;
-						struct archive* ar = archive_read_new();
-						archive_read_support_filter_all(ar);
-						archive_read_support_format_all(ar);
-
-						int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
-						if (r == ARCHIVE_FATAL) {
-							LOG(ERROR) << "Skipping broken archive at: " << entry->url;
-
-							archive_read_close(ar);
-							archive_read_free(ar);
-
-							skip_meta_entry = true;
-							m->skip_record = true;	// Skip this record
-							continue;
-						}
-
-						// Save the file_id.diz for the end so we know all images have been loaded
-						struct ReadRequest* file_id = NULL;
-
-						// Go over all the files inside the archive
-						while (archive_read_next_header(ar, &a_entry) == ARCHIVE_OK) {
-
-							const uint8_t* buff;
-							size_t size;
-							off_t offset;
-
-							string file_name(archive_entry_pathname(a_entry));
-
-							struct ReadRequest* new_req = new ReadRequest();
-
-							new_req->url = entry->url;
-							new_req->id = "";
-							new_req->status = 200;
-
-							// Read all data for the entry retrieved aboved
-							for (;;) {
-								r = archive_read_data_block(ar, (const void **)&buff, &size, &offset);
-
-								if (r == ARCHIVE_EOF) {
-									if (file_name == "file_id.diz") {
-										// Save this for later, we still need to extract more images
-										file_id = new_req;
-
-									} else {
-										// Store file as if we got it from cURL
-										responses[md5(file_name)] = new_req;
-									}
-									break;
-								}
-
-								// Insert data in the request buffer
-								new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
-							}
-						}
-
-						if (file_id == NULL) {
-							LOG(ERROR) << entry->url << " did not contain a file_id.diz";
-
-							skip_meta_entry = true;
-							m->skip_record = true;	// Skip this record
-
-							continue;
-						}
-
-						// Make sure we NULL terminate the text file
-						file_id->read_data.push_back('\0');
-
-						skip_meta_entry = true;
-
-						// Parse the Metadata records contained in this file. Entries here link
-						// to the download through their 'filename'. Entries with the same 'id'
-						// are merged as entries in a Metadata struct
-						vector<MetadataEntry* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
-
-						for (MetadataEntry* tar_entry : tar_meta) {
-							// Assign the downloaded data
-							ReadRequest* tar_data = responses[md5(tar_entry->filename)];
-
-							int r = ReadRequestToMetadataEntry(tar_data, tar_entry);
-							if (r == -1)	// Failed
-								return -1;
-						}
-
-						// Copy data to new vector
-						new_entries.insert(new_entries.end(), tar_meta.begin(), tar_meta.end());
-
-						// We dont need to safe this download
-						delete file_id;
-
-						archive_read_close(ar);
-						archive_read_free(ar);
-
-					} else {
-						LOG(ERROR) << "Encountered download for unsupported source METADATA_VALUE_TYPE: " << entry->value_type;
-						return -1;
-					}
-				}
-
-				if (!skip_meta_entry)
-					new_entries.push_back(entry);
-
-			}	// for (MetaDataEntry* entry : m->entries)
-
-			if (!m->skip_record) {
-				m->entries = new_entries;
-				meta_data_unpacked.push_back(m);
-			}
-
-		}	// for (Metadata* m : meta_data)
-
-		meta_data.clear();
-
-		int to_write = meta_data_unpacked.size();
-		int cur_write = 0;
-
-		if (p_writer->BeginWriting() != 0) {
-			LOG(ERROR) << "BeginWriting() failed ";
-			return -1;
-		}
-
-		// Iterate over the metadata a final time while calling the WriteData on the storage module
-		for (Metadata* m : meta_data_unpacked) {
-
-			if (time(NULL) != seconds) {
-				DisplayProgressBar(cur_write / (float)to_write, cur_write, to_write);
-
-				seconds = time(NULL);
-			}
-
-			// If the module doesnt support blobs or images-external is forced we first store
-			// the data on disk and only pass the file_uri to the output modules
-			if (options["images-external"] != "" || !can_store_blobs) {
-				// Loop through individual fields to find any image/raw to store on disk
-				for (MetadataEntry* e : m->entries) {
-					if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
-
-						string file_uri = "";
-						if (e->value_type == METADATA_VALUE_TYPE_IMAGE)
-							file_uri = WriteImageData(e->filename, &e->image_data[0], e->image_data.size(), true);
-						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float")
-							file_uri = WriteImageData(e->filename, (uint8_t*)&e->float_raw_data[0], e->float_raw_data.size() * 4, true);
-						else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8")
-							file_uri = WriteImageData(e->filename, &e->uint8_raw_data[0], e->uint8_raw_data.size(), true);
-						
-						// We were unable to write the image to disk, fail this record
-						if (file_uri == "") {
-							m->skip_record = true;
-						}
-
-						e->file_uri = file_uri;
-					}
-				}
-			}
-
-			if (!m->skip_record) {
-				string writer_res = p_writer->WriteData(m);
-
-				// Tokenize the output from the writer. Key=Value;Key=Value...
-				map<string, string> keyval_map;
-
-				for (const string& tag : split(writer_res, ';')) {
-					auto key_val = split(tag, '=');
-					keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
-				}
-
-				string record_hash = keyval_map["hash"];
-				if (record_hash == "") {
-					LOG(ERROR) << "WriteData returned empty hash";
-					return -1;
-				}
-
-				// Store the filename in the meta db. 
-				string file_name = keyval_map["file"];
-				int file_id = 0;
-
-				if (file_name != "") {
-					// Generate a fileid or return an existing one
-					file_id = p_mdb->GetFileId(file_name);
-				}
-
-				// Insert the API and record hash into the meta db
-				p_mdb->InsertHash(file_id, m->hash, record_hash);
-			}
-
-			cur_write++;
-		}
-
-		if (p_writer->EndWriting() != 0) {
-			LOG(ERROR) << "EndWriting() failed ";
-			return -1;
-		}
-
-		DisplayProgressBar(1, cur_write, to_write);
-		cout << endl;
+		bool bcontinue = GenerateImageMean(meta_data_unpacked, gMean, options);
 
 		p_reader->ClearData();
 
@@ -752,14 +720,347 @@ int StartExport(map<string,string> options) {
 		}
 
 		responses.clear();
-	}
 
-	// Call finalize on the writer function
-	p_writer->Finalize();
+		if (gGenerateMean == MEAN_GLOBAL)
+			LOG(INFO) << "Global mean: " << gMean->GetGlobalMean();
+		if (gGenerateMean == MEAN_CHANNEL) {
+			vector<float> chan_mean = gMean->GetChannelMean();
+			string means = "";
+			for (unsigned int i=0; i<chan_mean.size(); i++) {
+				means += " " + to_string((int)round(chan_mean[i])) + "(" + to_string(chan_mean[i]) + ")";
+			}
+			LOG(INFO) << "Channel mean:" << means;
+		}
+
+		iteration++;
+	}
 
 	StopFeedThread();
 
 	return 0;
+}
+
+bool GenerateImageMean(vector<Metadata* >& meta_data, ImageMean* mean, map<string,string> options) {
+
+	time_t seconds = time(NULL);
+
+//	unsigned int to_write = meta_data.size();
+	int cur_write = 0;
+
+	// Iterate over the metadata a final time while calling the ImageMean module
+	for (Metadata* m : meta_data) {
+
+		if (time(NULL) != seconds) {
+//			DisplayProgress("", cur_write / (float)to_write, cur_write, to_write, "");
+
+			seconds = time(NULL);
+		}
+
+		for (MetadataEntry* e : m->entries) {
+			if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
+
+				cv::Mat img;
+
+				if (e->value_type == METADATA_VALUE_TYPE_IMAGE) {
+					img = cv::imdecode(e->image_data, CV_LOAD_IMAGE_UNCHANGED);
+				}
+				else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float") {
+					img = cv::Mat(e->data_height, e->data_width, CV_32FC(e->data_channels), &e->float_raw_data[0]);
+				}
+				else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8") {
+					img = cv::Mat(e->data_height, e->data_width, CV_8UC(e->data_channels), &e->uint8_raw_data[0]);
+				}
+
+				mean->AddImage(img);
+			}
+		}
+
+		cur_write++;
+	}
+
+//	DisplayProgress("", 1, cur_write, to_write, "");
+//	cout << endl;
+
+	return true;
+}
+
+bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* p_mdb, map<string,string> options) {
+
+	time_t seconds = time(NULL);
+
+	bool can_store_blobs = p_writer->CanHandle("blobs");
+	int to_write = meta_data.size();
+	int cur_write = 0;
+
+	if (p_writer->BeginWriting() != 0) {
+		LOG(ERROR) << "BeginWriting() failed ";
+		return false;
+	}
+
+	// Iterate over the metadata a final time while calling the WriteData on the storage module
+	for (Metadata* m : meta_data) {
+
+		if (time(NULL) != seconds) {
+			DisplayProgressBar(cur_write / (float)to_write, cur_write, to_write);
+
+			seconds = time(NULL);
+		}
+
+		// Check if we need to subtract an image mean. This would change TYPE_IMAGE to TYPE_RAW
+		if (gSubtractMean == true) {
+
+			for (MetadataEntry* e : m->entries) {
+				
+				cv::Mat img;
+
+				// Convert Image and Raw types to an opencv Mat
+				if (e->value_type == METADATA_VALUE_TYPE_IMAGE) {
+					img = cv::imdecode(e->image_data, CV_LOAD_IMAGE_UNCHANGED);
+				}
+				else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float") {
+					img = cv::Mat(e->data_height, e->data_width, CV_8UC(e->data_channels), (uint8_t*)&e->float_raw_data[0]);
+				}
+				else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8") {
+					img = cv::Mat(e->data_height, e->data_width, CV_32FC(e->data_channels), &e->uint8_raw_data[0]);
+				}
+
+				img = gMean->SubtractMean(img);
+			}
+		}
+
+		// If the module doesnt support blobs or images-external is forced we first store
+		// the data on disk and only pass the file_uri to the output modules
+		if (options["images-external"] != "" || !can_store_blobs) {
+			// Loop through individual fields to find any image/raw to store on disk
+			for (MetadataEntry* e : m->entries) {
+				if (e->value_type == METADATA_VALUE_TYPE_IMAGE || e->value_type == METADATA_VALUE_TYPE_RAW) {
+
+					string file_uri = "";
+					if (e->value_type == METADATA_VALUE_TYPE_IMAGE)
+						file_uri = WriteImageData(e->filename, &e->image_data[0], e->image_data.size(), true);
+					else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "float")
+						file_uri = WriteImageData(e->filename, (uint8_t*)&e->float_raw_data[0], e->float_raw_data.size() * 4, true);
+					else if (e->value_type == METADATA_VALUE_TYPE_RAW && e->dtype == "uint8")
+						file_uri = WriteImageData(e->filename, &e->uint8_raw_data[0], e->uint8_raw_data.size(), true);
+					
+					// We were unable to write the image to disk, fail this record
+					if (file_uri == "") {
+						m->skip_record = true;
+					}
+
+					e->file_uri = file_uri;
+				}
+			}
+		}
+
+		if (!m->skip_record) {
+			string writer_res = p_writer->WriteData(m);
+
+			// Tokenize the output from the writer. Key=Value;Key=Value...
+			map<string, string> keyval_map;
+
+			for (const string& tag : split(writer_res, ';')) {
+				auto key_val = split(tag, '=');
+				keyval_map.insert(std::make_pair(key_val[0], key_val[1]));
+			}
+
+			string record_hash = keyval_map["hash"];
+			if (record_hash == "") {
+				LOG(ERROR) << "WriteData returned empty hash";
+				return false;
+			}
+
+			// Store the filename in the meta db. 
+			string file_name = keyval_map["file"];
+			int file_id = 0;
+
+			if (file_name != "") {
+				// Generate a fileid or return an existing one
+				file_id = p_mdb->GetFileId(file_name);
+			}
+
+			// Insert the API and record hash into the meta db
+			p_mdb->InsertHash(file_id, m->hash, record_hash);
+		}
+
+		cur_write++;
+	}
+
+	if (p_writer->EndWriting() != 0) {
+		LOG(ERROR) << "EndWriting() failed ";
+		return false;
+	}
+
+	DisplayProgressBar(1, cur_write, to_write);
+	cout << endl;
+
+	return true;
+}
+
+vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, ReadRequest* >& responses) {
+
+	// Same as the original meta_data vector except archives have been unpacked
+	// and their 'archive' entries removed. This all makes sure archives get 
+	// expanded in the same place inside the vector
+	vector<Metadata* > meta_data_unpacked;
+
+	for (Metadata* m : meta_data) {
+		// Find the request for a specific filename
+
+		if (m->skip_record)
+			continue;
+
+		vector<MetadataEntry* > new_entries;
+
+		for (MetadataEntry* entry : m->entries) {
+
+			bool skip_meta_entry = false;
+
+			if (entry->url != "") {	// Did we download something ?
+				ReadRequest* req = responses[md5(entry->url)];
+
+				if (entry->value_type == METADATA_VALUE_TYPE_IMAGE || entry->value_type == METADATA_VALUE_TYPE_RAW) {
+					int r = ReadRequestToMetadataEntry(req, entry);
+
+					if (r == -1)
+						return meta_data_unpacked;
+
+				} else if (entry->value_type == METADATA_VALUE_TYPE_ARCHIVE) {
+					// Archive found, start unpacking
+					struct archive_entry* a_entry;
+					struct archive* ar = archive_read_new();
+					archive_read_support_filter_all(ar);
+					archive_read_support_format_all(ar);
+
+					int r = archive_read_open_memory(ar, &req->read_data[0], req->read_data.size());
+					if (r == ARCHIVE_FATAL) {
+						LOG(DEBUG) << "Skipping broken archive at: " << entry->url;
+
+						archive_read_close(ar);
+						archive_read_free(ar);
+
+						skip_meta_entry = true;
+						m->skip_record = true;	// Skip this record
+						continue;
+					}
+
+					// Save the file_id.diz for the end so we know all images have been loaded
+					struct ReadRequest* file_id = NULL;
+
+					// Go over all the files inside the archive
+					while (archive_read_next_header(ar, &a_entry) == ARCHIVE_OK) {
+
+						const uint8_t* buff;
+						size_t size;
+						off_t offset;
+
+						string file_name(archive_entry_pathname(a_entry));
+
+						struct ReadRequest* new_req = new ReadRequest();
+
+						new_req->url = entry->url;
+						new_req->id = "";
+						new_req->status = 200;
+
+						// Read all data for the entry retrieved aboved
+						for (;;) {
+							r = archive_read_data_block(ar, (const void **)&buff, &size, &offset);
+
+							if (r == ARCHIVE_EOF) {
+								if (file_name == "file_id.diz") {
+									// Save this for later, we still need to extract more images
+									file_id = new_req;
+
+								} else {
+									// Store file as if we got it from cURL
+									responses[md5(file_name)] = new_req;
+								}
+								break;
+							}
+
+							// Insert data in the request buffer
+							new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
+						}
+					}
+
+					if (file_id == NULL) {
+						LOG(ERROR) << entry->url << " did not contain a file_id.diz";
+
+						skip_meta_entry = true;
+						m->skip_record = true;	// Skip this record
+
+						continue;
+					}
+
+					// Make sure we NULL terminate the text file
+					file_id->read_data.push_back('\0');
+
+					skip_meta_entry = true;
+
+					// Parse the Metadata records contained in this file. Entries here link
+					// to the download through their 'filename'. Entries with the same 'id'
+					// are merged as entries in a Metadata struct
+					vector<MetadataEntry* > tar_meta = ParseTarFeed((const char* )&file_id->read_data[0]);
+
+					for (MetadataEntry* tar_entry : tar_meta) {
+						// Assign the downloaded data
+						ReadRequest* tar_data = responses[md5(tar_entry->filename)];
+
+						int r = ReadRequestToMetadataEntry(tar_data, tar_entry);
+						if (r == -1)	// Failed
+							return meta_data_unpacked;
+					}
+
+					// Delete the TAR file entry
+					m->entries.erase(remove(m->entries.begin(), m->entries.end(), entry),m->entries.end());
+
+					// Iterate all converted tar entries and add as new records
+					for (MetadataEntry* tar_entry : tar_meta) {
+
+						Metadata* new_record = new Metadata();
+						new_record->setname = m->setname;
+						new_record->hash = m->hash;
+
+						// Insert the main fields that were supplied in the field						
+						new_record->entries.insert(new_record->entries.end(), m->entries.begin(), m->entries.end());
+						// Insert the unpacked image
+						new_record->entries.push_back(tar_entry);
+/*
+						for (MetadataEntry* e : new_record->entries) {
+							cout << "id: " << e->id << " fieldid: " << e->field_id << " metatype: " << e->meta_type << " valuetype: " << e->value_type << endl;
+						}
+
+						cout << endl;
+*/
+						// Add entry as a new reocrd
+						meta_data_unpacked.push_back(new_record);
+					}
+
+					// We dont need to safe this download
+					delete file_id;
+
+					archive_read_close(ar);
+					archive_read_free(ar);
+
+				} else {
+					LOG(ERROR) << "Encountered download for unsupported source METADATA_VALUE_TYPE: " << entry->value_type;
+					return meta_data_unpacked;
+				}
+			}
+
+//			if (!skip_meta_entry)
+//				new_entries.push_back(entry);
+
+		}	// for (MetaDataEntry* entry : m->entries)
+/*
+		if (!m->skip_record) {
+			m->entries = new_entries;
+			meta_data_unpacked.push_back(m);
+		}
+*/
+	}	// for (Metadata* m : meta_data)
+
+	return meta_data_unpacked;
 }
 
 int VerifyLocal(map<string,string> options) {
@@ -790,7 +1091,7 @@ int VerifyLocal(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-		p_writer = new Hdf5Writer(gExportName, options);
+//		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -845,6 +1146,8 @@ int VerifyLocal(map<string,string> options) {
 
 	LOG(INFO) << "Records found in Meta Db: " << found_in_metadb;
 	LOG(INFO) << "Records not found in Meta Db: " << not_found_in_metadb;
+
+	return 0;
 }
 
 int VerifyApi(map<string,string> options) {
@@ -882,7 +1185,7 @@ int VerifyApi(map<string,string> options) {
 
 	for (;batch_idx < num_batches && gInterrupted == false; batch_idx++) {
 
-		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
+		vector<Metadata* > meta_data = FetchBatch(options, batch_idx, 0);
 
 		if (meta_data.size() == 0) {
 			LOG(WARNING) << "No metadata returned by API, end of dataset?";
@@ -1008,6 +1311,13 @@ void DisplayProgressBar(float progress, int cur_value, int max_value) {
 	}
 	
 	cout << "] [" << to_string(cur_value) << "/" << to_string(max_value) << "]\r";
+	cout.flush();
+}
+
+void DisplayProgress(string prefix, float progress, int cur_value, int max_value, string suffix) {
+	
+	cout << prefix << round(100 * progress) << "% (" << cur_value << "/" << max_value << ")" << suffix << "\r";
+
 	cout.flush();
 }
 

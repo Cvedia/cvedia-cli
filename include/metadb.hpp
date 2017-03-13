@@ -1,6 +1,8 @@
 #ifndef _METADB_HPP
 #define _METADB_HPP
 
+#include <mutex>
+
 using namespace std;
 
 #include <sqlite3.h>
