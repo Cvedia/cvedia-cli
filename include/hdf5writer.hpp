@@ -46,11 +46,12 @@ public:
 
 private:
 	int writeCount = 1;
+	map<string, int> checkFileCount;
+	long unsigned int checkIntegrityCount = 0;
 	virtual string PrepareData(Metadata* meta);
-	virtual string GenerateHash(Metadata* meta);
 
 	const DataType& ConvertDtype(string dtype);
-	void AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype);
+	string AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype);
 
 	WriterStats mCsvStats;
 
@@ -78,6 +79,7 @@ private:
 
 	// The actual H5 files
 	map<string, H5File* > mH5File;
+	bool FileExists( string fileName );
 };
 
 #endif	// HAVE_HDF5
