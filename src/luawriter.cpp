@@ -67,7 +67,164 @@ int LuaWriter::Finalize() {
 }
 
 string LuaWriter::WriteData(Metadata* meta) {
-	return "";
+	string result = "";
+	//push the function to the stack before calling everything
+	lua_getglobal(L, "write_data");
+	lua_newtable(L);
+	int entryDict = lua_gettop(L); //table with setname and entries
+	lua_newtable(L);
+	int metaEntries = lua_gettop(L); //Contains all entries
+	int n = 1;
+	for (MetadataEntry* e : meta->entries) {
+
+		//convert the entry, and push it to the 
+		lua_newtable(L);
+		int metaDict = lua_gettop(L);
+
+
+		const char* id_key = "id";
+		int id_value = e->id;
+		lua_pushlstring(L, id_key, strlen(id_key));
+		lua_pushinteger(L, id_value);
+		lua_settable(L, metaDict);
+
+		const char* field_id_key = "field_id";
+		int field_id_value = e->field_id;
+		lua_pushlstring(L, field_id_key, strlen(field_id_key));
+		lua_pushinteger(L, field_id_value);
+		lua_settable(L, metaDict);
+
+		const char* meta_type_key = "meta_type";
+		const char* meta_type_value = e->meta_type.c_str();
+		lua_pushlstring(L, meta_type_key, strlen(meta_type_key));
+		lua_pushlstring(L, meta_type_value, e->meta_type.size());
+		lua_settable(L, metaDict);
+
+		const char* value_type_key = "value_type";
+		const char* value_type_value = e->value_type.c_str();
+		lua_pushlstring(L, value_type_key, strlen(value_type_key));
+		lua_pushlstring(L, value_type_value, e->value_type.size());
+		lua_settable(L, metaDict);
+
+		const char* file_uri_key = "file_uri";
+		const char* file_uri_value = e->file_uri.c_str();
+		lua_pushlstring(L, file_uri_key, strlen(file_uri_key));
+		lua_pushlstring(L, file_uri_value, e->file_uri.size());
+		lua_settable(L, metaDict);
+
+		const char* filename_key = "filename";
+		const char* filename_value = e->filename.c_str();
+		lua_pushlstring(L, filename_key, strlen(filename_key));
+		lua_pushlstring(L, filename_value, e->filename.size());
+		lua_settable(L, metaDict);
+
+		const char* url_key = "url";
+		const char* url_value = e->url.c_str();
+		lua_pushlstring(L, url_key, strlen(url_key));
+		lua_pushlstring(L, url_value, e->url.size());
+		lua_settable(L, metaDict);
+
+		const char* dtype_key = "dtype";
+		const char* dtype_value = e->dtype.c_str();
+		lua_pushlstring(L, dtype_key, strlen(dtype_key));
+		lua_pushlstring(L, dtype_value, e->dtype.size());
+		lua_settable(L, metaDict);
+
+		const char* field_name_key = "field_name";
+		const char* field_name_value = e->field_name.c_str();
+		lua_pushlstring(L, field_name_key, strlen(field_name_key));
+		lua_pushlstring(L, field_name_value, e->field_name.size());
+		lua_settable(L, metaDict);
+
+		const char* int_value_key = "int_value";
+		int int_value_value = e->int_value;
+		lua_pushlstring(L, int_value_key, strlen(int_value_key));
+		lua_pushinteger(L, int_value_value);
+		lua_settable(L, metaDict);
+
+		const char* float_value_key = "float_value";
+		lua_Number float_value_value  = e->float_value;
+		lua_pushlstring(L, float_value_key, strlen(float_value_key));
+		lua_pushnumber(L, float_value_value);
+		lua_settable(L, metaDict);
+
+		const char* data_channels_key = "data_channels";
+		int data_channels_value = e->data_channels;
+		lua_pushlstring(L, data_channels_key, strlen(data_channels_key));
+		lua_pushinteger(L, data_channels_value);
+		lua_settable(L, metaDict);
+
+		const char* data_width_key = "data_width";
+		int data_width_value = e->data_width;
+		lua_pushlstring(L, data_width_key, strlen(data_width_key));
+		lua_pushinteger(L, data_width_value);
+		lua_settable(L, metaDict);
+
+		const char* data_height_key = "data_height";
+		int data_height_value = e->data_height;
+		lua_pushlstring(L, data_height_key, strlen(data_height_key));
+		lua_pushinteger(L, data_height_value);
+		lua_settable(L, metaDict);
+
+
+		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
+
+		// Data is a regular image. Pass as an array nontheless
+		} else if (e->value_type == METADATA_VALUE_TYPE_IMAGE) {
+		
+
+		// Numerical value passed, check in which format
+		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+
+			if (e->dtype == "int") {
+			} else if (e->dtype == "float") {
+			} else {
+				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
+				return "";				
+			}
+		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
+		}
+
+		//add the table on the top of the stack to the table
+		lua_rawseti(L, metaEntries, n);
+		n++;
+	}
+
+	//add meta entries to entryDict
+	// lua_newtable(L);
+	// int entriesKeyValue = lua_gettop(L);
+	// LOG(INFO) << "entriesKeyValue: " << entriesKeyValue;
+	const char* entriesKey = "entries";
+	lua_pushlstring(L, entriesKey, strlen(entriesKey));
+	lua_pushvalue(L, metaEntries);
+	lua_settable(L, entryDict);
+	// lua_rawseti(L, entryDict, entriesKeyValue);
+	lua_remove(L, metaEntries); //remove the index now
+	
+	const char* setKey = "set";
+	const char* setValue = meta->setname.c_str();
+	lua_pushlstring(L, setKey, strlen(setKey));
+	lua_pushlstring(L, setValue, meta->setname.size());
+	lua_settable(L, entryDict);
+
+	// AddToDict(entry_dict, PyUnicode_FromString("set"), PyUnicode_FromString(meta->setname.c_str()));
+	// AddToDict(entry_dict, PyUnicode_FromString("entries"), pyMetaentry);
+
+	//do the call (1 argument, 1 result) 
+	if (lua_pcall(L, 1, 1, 0) != 0) {
+		LOG(ERROR) << "Error running function 'WriteData' " << lua_tostring(L, -1) ;
+		return "";
+	}
+
+		//get function result
+	if (!lua_isstring(L, -1)) {
+		LOG(ERROR) << "Error running function 'WriteData' must return a string";
+		return "";
+	} else {
+		result = string(lua_tostring(L, -1));
+	}
+
+	return result;
 }
 
 int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
@@ -295,15 +452,15 @@ bool LuaWriter::CanHandle(string support) {
 int LuaWriter::BeginWriting() {
 	// Call the begin_writing function of our lua script
 
-	lua_getglobal(L, "beging_writing");
+	lua_getglobal(L, "begin_writing");
     if (lua_pcall(L, 0, 1, 0) != 0) {
-    	LOG(ERROR) << "Error running function 'beging_writing' " << lua_tostring(L, -1) ;
+    	LOG(ERROR) << "Error running function 'begin_writing' " << lua_tostring(L, -1) ;
     	return false;
     }
 
     //get function result
     if (!lua_isboolean(L, -1)) {
-    	LOG(ERROR) << "Error running function 'beging_writing' must return a boolean";
+    	LOG(ERROR) << "Error running function 'begin_writing' must return a boolean";
     	return false;
     } 
 
@@ -335,13 +492,13 @@ string LuaWriter::CheckIntegrity(string file_name) {
 	lua_pushlstring(L, file_name.c_str(), file_name.size());
 	if (lua_pcall(L, 1, 1, 0) != 0) {
 		LOG(ERROR) << "Error running function 'check_integrity' " << lua_tostring(L, -1) ;
-		return false;
+		return "";
 	}
 
     //get function result
 	if (!lua_isstring(L, -1)) {
 		LOG(ERROR) << "Error running function 'check_integrity' must return a string";
-		return false;
+		return "";
 	} else {
 		result = string(lua_tostring(L, -1));
 	}

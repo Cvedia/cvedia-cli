@@ -30,6 +30,7 @@ function initialize(options, field_list_table, set_list_table, mode)
         output_fields[value["id"]] = value["name"]
     end
 
+    -- @TODO: Resume
     if mode == 0 then
         for key, value in pairs(set_list_table) do
             writer[value] = options["working_dir"] .. value .. ".lua"
@@ -37,32 +38,44 @@ function initialize(options, field_list_table, set_list_table, mode)
     end
     
     -- debug, requires     luarocks install inspect and local inspect = require('inspect')
-    -- print("final data")
-    -- print(inspect(g_options))
-    -- print(inspect(output_fields))
-    -- print(inspect(writer))
+    inspect = require('inspect')
+    print("final data")
+    print(inspect(g_options))
+    print(inspect(output_fields))
+    print(inspect(writer))
 
-    -- for field in dataset_meta['fields']:
-    --     output_fields[field['id']] = field['name']
-
-    -- # Only create new TFR files if we are in MODE_NEW
-    -- if mode == 0:
-    --     for dataset in dataset_meta['sets']:
-    --         writer[dataset] = tf.python_io.TFRecordWriter(options["working_dir"] + dataset + ".tfr")
 
     return true
 end
 
 function begin_writing()
+    files = {}
+    inspect = require('inspect')
+    print("Being writing")
+    print(inspect(g_options))
+    print(inspect(output_fields))
+    print(inspect(writer))
+
+    -- @TODO: Resume dont truncate
+    for key, value in pairs(writer) do
+        files[key] = io.open(value, "w+")
+    end
+
     return true
 end
 
 function end_writing()
+    for key, value in pairs(writer) do
+        io.close(files[key])
+    end
+
     return true
 end
 
 function write_data(entity)
-    return true
+    inspect = require('inspect')
+    print(inspect(entity))
+    return ""
 end
 
 function check_integrity(filename)
