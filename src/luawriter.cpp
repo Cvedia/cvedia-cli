@@ -167,23 +167,132 @@ string LuaWriter::WriteData(Metadata* meta) {
 		lua_settable(L, metaDict);
 
 
+		const char* entriesKey = "metadata";
+		lua_pushlstring(L, entriesKey, strlen(entriesKey));
+		lua_newtable(L);
+		int metadataTable = lua_gettop(L);
+		int metadataIndex = 1;
 		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
+			LOG(INFO) << "METADATA_VALUE_TYPE_RAW";
+
+			if (e->dtype == "uint8") {
+				LOG(INFO) << "METADATA_VALUE_TYPE_RAW uint8";
+				for (auto &data : e->uint8_raw_data) {
+					lua_pushnumber(L, data);
+					lua_rawseti( L, metadataTable, metadataIndex );
+					metadataIndex++;
+				}	
+
+			} else if (e->dtype == "float") {
+				LOG(INFO) << "METADATA_VALUE_TYPE_RAW float";
+				for (auto &data : e->float_raw_data) {
+					lua_Number luaFloat  = data;
+					lua_pushnumber(L, luaFloat);
+					lua_rawseti( L, metadataTable, metadataIndex );
+					metadataIndex++;
+				}	
+
+			} else {
+				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
+				return "";
+			}
+
+
 
 		// Data is a regular image. Pass as an array nontheless
 		} else if (e->value_type == METADATA_VALUE_TYPE_IMAGE) {
-		
 
+			// LOG(INFO) << "METADATA_VALUE_TYPE_IMAGE";
+			// LOG(INFO) << e->image_data.size();
+			// LOG(INFO) << reinterpret_cast<char*>(e->image_data.data());
+			// LOG(INFO) << strlen(reinterpret_cast<char*>(e->image_data.data()));
+			string metadata(e->image_data.begin(), e->image_data.end());
+			// lua_pushstring(L, metadata.c_str());
+			// lua_pushlstring(L, metadata.c_str(), strlen(metadata.c_str()));
+			// LOG(INFO) << metadata.length();
+			// LOG(INFO) << metadata;
+			// LOG(INFO) << metadata.c_str();
+			// LOG(INFO) << "C_STR strlen" << strlen(metadata.c_str());
+			// lua_settable(L, metaDict);
+			// for (auto &data : e->image_data) 
+			// {
+			// 	LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE: " << data;
+			// 	// const char* tmp = reinterpret_cast<const char*>(data);
+			// 	// const char tmp =  (const char)(data);
+			// 	char tmp[2];
+			// 	// tmp[0] = (const char)(data);
+			// 	tmp[0] = &data;
+			// 	tmp[1] = '\0';
+			// 	LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE 2: " << tmp;
+			// 	// lua_pushlstring(L, tmp, strlen(tmp));
+			// 	lua_pushstring(L, tmp);
+			// 	// lua_rawseti( L, metadataTable, metadataIndex );
+			// 	// metadataIndex++;
+			// }
+
+			for( string::iterator it = metadata.begin(); it != metadata.end(); ++it )
+			{
+				char tempCString[2];
+				tempCString[1] = '\0';
+				tempCString[0] = *it;
+				// LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE asd: " << tempCString;
+				lua_pushlstring(L, tempCString, strlen(tempCString));
+				lua_rawseti( L, metadataTable, metadataIndex );
+				metadataIndex++;
+			}
+
+			// for (auto &data : metadata) 
+			// {
+			// 	LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE" << data;
+			// 	const char* tmp = "" + data;
+			// 	LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE 2" << tmp;
+			// 	lua_pushlstring(L, tmp, strlen(tmp));
+			// 	// lua_rawseti( L, metadataTable, metadataIndex );
+			// 	// metadataIndex++;
+			// }
+
+			// const char* tmp = metadata.c_str();
+			// for ( unsigned int i = 0; i < strlen(metadata.c_str()) ; i++ ) {
+
+			// 	LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE" << tmp[i];
+			// 	// lua_pushlstring(L, tmp, strlen(tmp));
+			// 	// lua_rawseti( L, metadataTable, metadataIndex );
+			// 	// metadataIndex++;
+			// }
+
+			// for ( unsigned int i = 0; i < metadata.length() ; i++ ) {
+
+				// LOG(INFO) << "Foreach METADATA_VALUE_TYPE_IMAGE" << &metadata[i];
+				// lua_pushlstring(L, tmp, strlen(tmp));
+				// lua_rawseti( L, metadataTable, metadataIndex );
+				// metadataIndex++;
+			// }
+			
 		// Numerical value passed, check in which format
 		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+			LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC";
 
 			if (e->dtype == "int") {
+				LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC int";
+				lua_pushnumber(L, e->int_value);
+				lua_rawseti( L, metadataTable, metadataIndex );
 			} else if (e->dtype == "float") {
+				LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC float";
+				lua_Number luaFloat  = e->float_value;
+				lua_pushnumber(L, luaFloat);
+				lua_rawseti( L, metadataTable, metadataIndex );
 			} else {
 				LOG(ERROR) << "Unsupported dtype '" << e->dtype << "' passed";
 				return "";				
 			}
 		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
+			LOG(INFO) << "METADATA_VALUE_TYPE_STRING";
+			lua_pushstring(L, e->string_value[0].c_str());
+			lua_rawseti( L, metadataTable, metadataIndex );
 		}
+
+		//add the metadataTable to metaDict
+		lua_settable(L, metaDict);
 
 		//add the table on the top of the stack to the table
 		lua_rawseti(L, metaEntries, n);
@@ -191,16 +300,13 @@ string LuaWriter::WriteData(Metadata* meta) {
 	}
 
 	//add meta entries to entryDict
-	// lua_newtable(L);
-	// int entriesKeyValue = lua_gettop(L);
-	// LOG(INFO) << "entriesKeyValue: " << entriesKeyValue;
 	const char* entriesKey = "entries";
 	lua_pushlstring(L, entriesKey, strlen(entriesKey));
 	lua_pushvalue(L, metaEntries);
 	lua_settable(L, entryDict);
-	// lua_rawseti(L, entryDict, entriesKeyValue);
 	lua_remove(L, metaEntries); //remove the index now
-	
+
+
 	const char* setKey = "set";
 	const char* setValue = meta->setname.c_str();
 	lua_pushlstring(L, setKey, strlen(setKey));

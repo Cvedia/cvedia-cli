@@ -58,7 +58,11 @@ function begin_writing()
 
     -- @TODO: Resume dont truncate
     for key, value in pairs(writer) do
-        files[key] = io.open(value, "w+")
+        if not files[key] then
+            files[key] = io.open(value, "a+")
+        else 
+            files[key] = io.open(value, "w+")
+        end
     end
 
     return true
@@ -72,10 +76,37 @@ function end_writing()
     return true
 end
 
-function write_data(entity)
+function write_data(entry)
+    local md5 = require 'md5'
     inspect = require('inspect')
-    print(inspect(entity))
-    return ""
+    -- record = {}
+
+    -- for key, entry in pairs(entry.entries) do
+    --     out_field = output_fields[entry.id]
+
+    --     if entry.value_type == "image" then
+    --       --  record[out_field] = _bytes_feature(field['imagedata'].tobytes())
+    --     elseif  entry.value_type == "raw" then
+    --     elseif  entry.value_type == "numeric" then
+    --         if entry.dtype == "int" then
+    --         elseif entry.dtype == "float" then
+    --         else 
+    --             print("RecordsWriter does not support dtype '" + entry.dtype + "' for value type '" + entry.value_type + "'")
+    --         end
+    --     elseif  entry.value_type == "string" then
+    --     else 
+    --         print("RecordsWriter does not support '" + entry.value_type + "'")
+    --     end
+    -- end -- end for loop
+
+    -- example = tf.train.Example(features=tf.train.Features(feature=record))
+    -- data = example.SerializeToString()
+    -- writer[entry['set']].write(data)
+
+    -- return "file=" + entry['set'] + ".tfr;hash=" + m.hexdigest()
+    files[entry.set]:write(inspect(entry));
+
+    return "file=" .. writer[entry.set] .. ";hash=" .. md5.sumhexa(inspect(entry)) 
 end
 
 function check_integrity(filename)
