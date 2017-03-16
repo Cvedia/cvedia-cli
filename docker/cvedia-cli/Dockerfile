@@ -28,6 +28,8 @@ RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr ..
 RUN make
 RUN make install
 
+RUN apt-get install luarocks -y
+RUN luarocks install md5
 
 RUN mkdir /home/root/libarchive
 WORKDIR /home/root/libarchive

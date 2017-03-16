@@ -1097,6 +1097,10 @@ int VerifyLocal(map<string,string> options) {
 	} else if (gOutputFormat == "tfrecords") {
 		p_writer = new PythonWriter(gExportName, options);
 #endif
+#ifdef HAVE_LUA
+	} else if (gOutputFormat == "lua") {
+		p_writer = new LuaWriter(gExportName, options);
+#endif
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
 	}

@@ -25,16 +25,19 @@ function initialize(options, field_list_table, set_list_table, mode)
     output_fields = {}
     g_options = options
 
-
     for key, value in pairs(field_list_table) do
         output_fields[value["id"]] = value["name"]
     end
 
     -- @TODO: Resume
-    if mode == 0 then
-        for key, value in pairs(set_list_table) do
-            writer[value] = options["working_dir"] .. value .. ".lua"
+    for key, value in pairs(set_list_table) do
+        writer[value] = options["working_dir"] .. value .. ".lua"
+        if mode == 0 then
+            print("truncating files")
+            --truncate files
+            file = os.remove(writer[value])
         end
+
     end
     
     -- debug, requires     luarocks install inspect and local inspect = require('inspect')
@@ -49,20 +52,16 @@ function initialize(options, field_list_table, set_list_table, mode)
 end
 
 function begin_writing()
-    files = {}
     inspect = require('inspect')
-    print("Being writing")
+    files = {}
+
+    print("Begin writing")
     print(inspect(g_options))
     print(inspect(output_fields))
     print(inspect(writer))
 
-    -- @TODO: Resume dont truncate
     for key, value in pairs(writer) do
-        if not files[key] then
-            files[key] = io.open(value, "a+")
-        else 
-            files[key] = io.open(value, "w+")
-        end
+        files[key] = io.open(value, "a+")
     end
 
     return true
@@ -78,7 +77,8 @@ end
 
 function write_data(entry)
     local md5 = require 'md5'
-    inspect = require('inspect')
+    local serpent = require("serpent")
+
     -- record = {}
 
     -- for key, entry in pairs(entry.entries) do
@@ -104,28 +104,28 @@ function write_data(entry)
     -- writer[entry['set']].write(data)
 
     -- return "file=" + entry['set'] + ".tfr;hash=" + m.hexdigest()
-    files[entry.set]:write(inspect(entry));
+    serialized = serpent.line(entry)
+    files[entry.set]:write(serialized, "\n");
 
-    return "file=" .. writer[entry.set] .. ";hash=" .. md5.sumhexa(inspect(entry)) 
+    return "file=" .. writer[entry.set] .. ";hash=" .. md5.sumhexa(serialized) 
 end
 
 function check_integrity(filename)
-    -- global file_itr
-    -- global cur_filename
-    -- global g_options
+    local serpent = require("serpent")
+    local md5 = require 'md5'
 
-    -- if cur_filename != filename:
-    --     cur_filename = filename
-    --     file_itr = tf.python_io.tf_record_iterator(g_options["working_dir"] + filename)
+    if cur_filename ~= filename then
+        cur_filename = filename
+        file = io.open(cur_filename, "r+")
+    end
 
-    -- for record in file_itr:
 
-    --     m = hashlib.md5()
-    --     m.update(record)
+    line = file:read("*l")
+    if line  then
+        return "hash=" .. md5.sumhexa(line)
+    end
 
-    --     return "hash=" + m.hexdigest()
-
-    -- return "result=eof"
+    return "result=eof"
 end
 
 function finalize()
