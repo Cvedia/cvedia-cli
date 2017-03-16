@@ -11,7 +11,6 @@ end
 
 
 function can_handle( feature )
-    print("Can handle: " .. feature)
     if     feature == "resume" then return true
     elseif feature == "integrity" then return true
     end
@@ -33,7 +32,6 @@ function initialize(options, field_list_table, set_list_table, mode)
     for key, value in pairs(set_list_table) do
         writer[value] = options["working_dir"] .. value .. ".lua"
         if mode == 0 then
-            print("truncating files")
             --truncate files
             file = os.remove(writer[value])
         end
@@ -41,24 +39,15 @@ function initialize(options, field_list_table, set_list_table, mode)
     end
     
     -- debug, requires     luarocks install inspect and local inspect = require('inspect')
-    inspect = require('inspect')
-    print("final data")
-    print(inspect(g_options))
-    print(inspect(output_fields))
-    print(inspect(writer))
-
+    -- inspect = require('inspect')
+    -- print(inspect(g_options))
+    
 
     return true
 end
 
 function begin_writing()
-    inspect = require('inspect')
     files = {}
-
-    print("Begin writing")
-    print(inspect(g_options))
-    print(inspect(output_fields))
-    print(inspect(writer))
 
     for key, value in pairs(writer) do
         files[key] = io.open(value, "a+")

@@ -173,10 +173,8 @@ string LuaWriter::WriteData(Metadata* meta) {
 		int metadataTable = lua_gettop(L);
 		int metadataIndex = 1;
 		if (e->value_type == METADATA_VALUE_TYPE_RAW) {
-			LOG(INFO) << "METADATA_VALUE_TYPE_RAW";
 
 			if (e->dtype == "uint8") {
-				LOG(INFO) << "METADATA_VALUE_TYPE_RAW uint8";
 				for (auto &data : e->uint8_raw_data) {
 					lua_pushnumber(L, data);
 					lua_rawseti( L, metadataTable, metadataIndex );
@@ -184,7 +182,6 @@ string LuaWriter::WriteData(Metadata* meta) {
 				}	
 
 			} else if (e->dtype == "float") {
-				LOG(INFO) << "METADATA_VALUE_TYPE_RAW float";
 				for (auto &data : e->float_raw_data) {
 					lua_Number luaFloat  = data;
 					lua_pushnumber(L, luaFloat);
@@ -270,14 +267,11 @@ string LuaWriter::WriteData(Metadata* meta) {
 			
 		// Numerical value passed, check in which format
 		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
-			LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC";
 
 			if (e->dtype == "int") {
-				LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC int";
 				lua_pushnumber(L, e->int_value);
 				lua_rawseti( L, metadataTable, metadataIndex );
 			} else if (e->dtype == "float") {
-				LOG(INFO) << "METADATA_VALUE_TYPE_NUMERIC float";
 				lua_Number luaFloat  = e->float_value;
 				lua_pushnumber(L, luaFloat);
 				lua_rawseti( L, metadataTable, metadataIndex );
@@ -286,7 +280,6 @@ string LuaWriter::WriteData(Metadata* meta) {
 				return "";				
 			}
 		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
-			LOG(INFO) << "METADATA_VALUE_TYPE_STRING";
 			lua_pushstring(L, e->string_value[0].c_str());
 			lua_rawseti( L, metadataTable, metadataIndex );
 		}
@@ -334,8 +327,6 @@ string LuaWriter::WriteData(Metadata* meta) {
 }
 
 int LuaWriter::Initialize(DatasetMetadata* dataset_meta, int mode) {
-	LOG(INFO) << "Lua initialize called with module " << mExportName;
-
 	ifstream script_stream(mExportName);
 	if (!script_stream.is_open()) {
 		LOG(ERROR) << "Error reading script file " << mExportName;
