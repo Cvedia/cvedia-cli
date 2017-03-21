@@ -6,7 +6,7 @@ if HAVE_TFRECORDS
 endif
 
 AM_CPPFLAGS = ${libcurl_CFLAGS} -I$(PYINCS) -I$(NUMPY_INCLUDE_DIR)
-AM_LDFLAGS = -lcurl -lpthread -larchive
+AM_LDFLAGS = -lcurl -lpthread -larchive -L/usr/local/lib -L/usr/lib
 
 if HAVE_HDF5
 AM_LDFLAGS += -lhdf5_cpp -lhdf5
