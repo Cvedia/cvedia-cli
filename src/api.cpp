@@ -262,7 +262,7 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int ite
 	LOG(DEBUG) << "Fetching batch at " << api_url;
 
 	ReadRequest *req = CurlReader::RequestUrl(api_url);
-
+	
 	if (req != NULL && req->read_data.size() > 0) {
 
 		string data_str( req->read_data.begin(), req->read_data.end() );
