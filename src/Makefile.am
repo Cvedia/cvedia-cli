@@ -13,7 +13,8 @@ AM_LDFLAGS += -lhdf5_cpp -lhdf5
 endif
 
 if HAVE_OPENCV
-AM_LDFLAGS += -lopencv_core -lopencv_imgproc -lopencv_features2d -lopencv_highgui -ltiff
+AM_CPPFLAGS += @OPENCV_CFLAGS@
+AM_LDFLAGS += @OPENCV_LIBS@ -ltiff
 endif
 
 if HAVE_SQLITE
