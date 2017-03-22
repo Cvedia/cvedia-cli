@@ -5,7 +5,7 @@ if HAVE_TFRECORDS
 	$(PROTOC) --proto_path=$(srcdir) --cpp_out=$(builddir) $^
 endif
 
-AM_CPPFLAGS = ${libcurl_CFLAGS} -I$(PYINCS) -I$(NUMPY_INCLUDE_DIR)		 
+AM_CPPFLAGS = ${libcurl_CFLAGS} -I$(PYINCS) -I$(NUMPY_INCLUDE_DIR)
 AM_LDFLAGS = -lcurl -lpthread -larchive -L/usr/local/lib -L/usr/lib
 
 if HAVE_HDF5
@@ -13,7 +13,8 @@ AM_LDFLAGS += -lhdf5_cpp -lhdf5
 endif
 
 if HAVE_OPENCV
-AM_LDFLAGS += -lopencv_core -lopencv_imgproc -lopencv_features2d -lopencv_highgui -ltiff
+AM_CPPFLAGS += @OPENCV_CFLAGS@
+AM_LDFLAGS += @OPENCV_LIBS@ -ltiff
 endif
 
 if HAVE_SQLITE
