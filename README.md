@@ -41,7 +41,10 @@ apt-get -y install autoconf pkg-config vim automake libtool curl make g++ \
   libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev \
   libdc1394-22-dev libglu1-mesa libgtkglext1 libhighgui-dev \
   libilmbase-dev libilmbase12 libopenexr-dev libopenexr22 libpangox-1.0-0 \
-  libv4l-0 libv4lconvert0 libxmu6 libxt6
+  libv4l-0 libv4lconvert0 libxmu6 libxt6 lua5.2 liblua5.2-dev luarocks
+  
+  luarocks install md5
+  luarocks install serpent
 ```
 **Step 4:** Install necessary python packages
 ```bash
