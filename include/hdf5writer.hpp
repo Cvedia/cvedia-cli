@@ -21,15 +21,19 @@ public:
 	Hdf5Writer() {};
 	~Hdf5Writer();
 
-	string WriteData(Metadata* meta);
-
 	WriterStats GetStats();
 	void ClearStats();
-	
+
+	virtual bool CanHandle(string support);
+
 	virtual int Initialize(DatasetMetadata* dataset_meta, int mode);
-	virtual string VerifyData(string file_name, DatasetMetadata* dataset_meta);
-	
-	virtual int Initialize(DatasetMetadata* dataset_meta, bool resume);
+
+	virtual int BeginWriting();
+	virtual string WriteData(Metadata* meta);
+	virtual int EndWriting();
+
+	virtual string CheckIntegrity(string file_name);
+
 	virtual int Finalize();
 
 	string mBasePath;
@@ -41,12 +45,13 @@ public:
 	map<string, string> mModuleOptions;
 
 private:
-
-	virtual bool ValidateData(vector<Metadata* > meta);
+	int writeCount = 1;
+	map<string, int> checkFileCount;
+	long unsigned int checkIntegrityCount = 0;
 	virtual string PrepareData(Metadata* meta);
 
 	const DataType& ConvertDtype(string dtype);
-	void AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype);
+	string AppendEntry(DataSet* dataset, void* data_ptr, hsize_t data_size, const DataType& dtype);
 
 	WriterStats mCsvStats;
 
@@ -56,22 +61,25 @@ private:
 	bool mCreateTestFile;
 	bool mCreateValFile;
 
-	DataSpace *mSourceSpace;
-	DataSpace *mGroundSpace;
+	DataSpace *mSpace;
 
 	map<string, DataSet* > mDataSet;
-	map<string, DataSet* > mLabelSet;
+	DatasetMetadata* mDatasetMetadata;
 
-	hsize_t mSourceDataDim = 0;
-	hsize_t mGroundDataDim = 0;
+	hsize_t dataDim = 0;
 
 	// The txt indices for the H5 files
 	ofstream mTrainFile;
 	ofstream mTestFile;
 	ofstream mValidateFile;
+	map<string, ofstream > mSetFile;
+
+	string mVerifyFilename;
+	ifstream mVerifyFile;
 
 	// The actual H5 files
 	map<string, H5File* > mH5File;
+	bool FileExists( string fileName );
 };
 
 #endif	// HAVE_HDF5

@@ -46,7 +46,7 @@ using namespace rapidjson;
 #include "cvedia.hpp"
 #include "curlreader.hpp"
 #include "csvwriter.hpp"
-//#include "hdf5writer.hpp"
+#include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
 #include "imagemean.hpp"
 #include "caffeimagedata.hpp"
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 	supported_output.push_back("CSV");
 	supported_output.push_back("CaffeImageData");
 #ifdef HAVE_HDF5
-//	supported_output.push_back("HDF5");
+	supported_output.push_back("HDF5");
 #endif
 #ifdef HAVE_PYTHON
 
@@ -231,6 +231,7 @@ int main(int argc, char* argv[]) {
 	if (options[VERIFYAPI].count() == 1) {
 		gVerifyApi = true;
 	}
+
 
 	if (options[VERIFYLOC].count() == 1) {
 		gVerifyLocal = true;
@@ -396,7 +397,7 @@ int StartExport(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-//		p_writer = new Hdf5Writer(gExportName, options);
+		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -735,7 +736,7 @@ bool GenerateImageMean(vector<Metadata* >& meta_data, ImageMean* mean, map<strin
 				}
 
 				mean->AddImage(img);
-			}
+			} 
 		}
 
 		cur_write++;
@@ -812,6 +813,21 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 					}
 
 					e->file_uri = file_uri;
+				}
+			}
+		} else if( can_store_blobs ) {
+			for (MetadataEntry* e : m->entries) {
+				if (e->value_type == METADATA_VALUE_TYPE_IMAGE ) {
+					cv::Mat img;
+					img = cv::imdecode(e->image_data, CV_LOAD_IMAGE_UNCHANGED);
+					if(img.isContinuous()){
+						e->image_data.assign(img.datastart, img.dataend);
+					}  else {
+						for (int i = 0; i < img.rows; ++i) {
+							e->image_data.insert(e->image_data.end(), img.ptr<uchar>(i), img.ptr<uchar>(i)+img.cols);
+						}
+					}
+					// img.row(0).copyTo(e->float_raw_data);
 				}
 			}
 		}
@@ -1054,7 +1070,7 @@ int VerifyLocal(map<string,string> options) {
 		p_writer = new CaffeImageDataWriter(gExportName, options);
 #ifdef HAVE_HDF5
 	} else if (gOutputFormat == "hdf5") {
-//		p_writer = new Hdf5Writer(gExportName, options);
+		p_writer = new Hdf5Writer(gExportName, options);
 #endif
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
@@ -1099,7 +1115,7 @@ int VerifyLocal(map<string,string> options) {
 				} else {
 					not_found_in_metadb++;
 				}
-			} else {
+			} else if(result != "eof"){
 				LOG(ERROR) << "CheckIntegrity did not return a hash or EOF";
 				break;
 			}
