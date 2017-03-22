@@ -48,6 +48,8 @@ using namespace rapidjson;
 #include "csvwriter.hpp"
 #include "hdf5writer.hpp"
 #include "pythonwriter.hpp"
+#include "luawriter.hpp"
+#include "luamodules.hpp"
 #include "imagemean.hpp"
 #include "caffeimagedata.hpp"
 #include "pythonmodules.hpp"
@@ -141,6 +143,35 @@ int main(int argc, char* argv[]) {
 
 #endif
 
+#ifdef HAVE_LUA
+	LOG(INFO) << "We have LUA in main function";
+	LuaModules::LoadLuaCore();
+	gModules = LuaModules::ListModules("./lua/");
+	for (export_module module : gModules) {
+		LOG(INFO) << "Found module: " << module.module_name;
+		supported_output.push_back(module.module_name);
+
+		string str_mod_help = string("\n\n\t##### " + module.module_name + " Module Options #####\n");
+		char* mod_help = new char[str_mod_help.length()+1]();
+		strcpy(mod_help, str_mod_help.c_str());
+		module_vec.push_back({UNKNOWN, 	0,"" , ""    ,option::Arg::None, mod_help});
+		for (export_module_param param : module.module_params) {
+
+			param.help = string(param.example + "  \t" + param.description);
+
+			// Convert the string() object to const char*. Converting them to c_str()
+			// directly into the Descriptor struct does not guarantuee their continued existence.
+			// These pointers are not freed
+			char* option = new char[param.option.length()+1]();
+			strcpy(option, param.option.c_str());
+			char* help = new char[param.help.length()+1]();
+			strcpy(help, param.help.c_str());
+
+			module_vec.push_back({UNKNOWN,    	0,"", option, (param.required == true ? option::Arg::Required : option::Arg::None), help });
+		}
+
+	}
+#endif
 	string output_string = JoinStringVector(supported_output, ",");
 
 	vector<option::Descriptor> usage_vec;
@@ -402,6 +433,12 @@ int StartExport(map<string,string> options) {
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
 		p_writer = new PythonWriter(gExportName, options);
+#endif
+#ifdef HAVE_LUA
+	LOG(INFO) << "We have LUA";
+	} else if (gOutputFormat == "lua") {
+		LOG(INFO) << "Selected LUA writer";
+		p_writer = new LuaWriter(gExportName, options);
 #endif
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;
@@ -1075,6 +1112,10 @@ int VerifyLocal(map<string,string> options) {
 #ifdef HAVE_PYTHON
 	} else if (gOutputFormat == "tfrecords") {
 		p_writer = new PythonWriter(gExportName, options);
+#endif
+#ifdef HAVE_LUA
+	} else if (gOutputFormat == "lua") {
+		p_writer = new LuaWriter(gExportName, options);
 #endif
 	} else {
 		LOG(ERROR) << "Unsupported output module specified: " << gOutputFormat;

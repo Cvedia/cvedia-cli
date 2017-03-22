@@ -17,6 +17,9 @@ AC_ARG_WITH([tfrecords],
 AC_ARG_WITH([python], 
   AS_HELP_STRING([--without-python], [build without Python support (default: no)]))
 
+AC_ARG_WITH([lua], 
+  AS_HELP_STRING([--without-lua], [build without Lua support (default: no)]))
+
 PKG_CHECK_MODULES(PROTOBUF, protobuf >= 3.0.0,
 	if test x"$with_tfrecords" != x"no"; then
 		[AC_DEFINE(HAVE_TFRECORDS,1,[define if TFRecords is supported.])  
@@ -99,9 +102,27 @@ AC_CHECK_HEADERS([openssl/crypto.h openssl/x509.h openssl/pem.h openssl/ssl.h op
 PKG_CHECK_MODULES([SQLITE3], [sqlite3], [have_libsqlite3=yes], [have_libsqlite3=no])
 AM_CONDITIONAL([LIB_SQLITE3],  [test "$have_libsqlite3" = "yes"])
 
+## Check for lua
+PKG_CHECK_MODULES(Lua, lua52, 
+    if test x"$with_lua" != x"no"; then
+        [AC_DEFINE([HAVE_LUA], 1, [Define if you have 'Lua' development SDK])
+        with_lua=yes
+        LUALIBS="-llua5.2 -lpthread -ldl  -lutil -lm "
+        LUAINCS="/usr/include/lua5.2"
+        PACKAGES_USED="$PACKAGES_USED lua52"   
+        CPPFLAGS=-"I$LUAINCS $CPPFLAGS"
+    fi
+],
+[AC_MSG_WARN([lua52 not found; disabling Lua support]) 
+    with_lua=no
+]
+)
+
+
 AM_CONDITIONAL(HAVE_HDF5, test x"$with_hdf5" = x"yes")
 AM_CONDITIONAL(HAVE_TFRECORDS, test x"$with_tfrecords" = x"yes")
 AM_CONDITIONAL(HAVE_PYTHON, test x"$with_python" = x"yes")
+AM_CONDITIONAL(HAVE_LUA, test x"$with_lua" = x"yes")
 AM_CONDITIONAL(HAVE_OPENCV, test x"$HAVE_OPENCV" = x"yes")
 
 AM_CONDITIONAL(HAVE_SQLITE, test x"$have_libsqlite3" = x"yes")
@@ -113,6 +134,9 @@ AC_SUBST(CURL_LIBS)
 
 AC_SUBST(PYINCS)
 AC_SUBST(PYLIBS)
+
+AC_SUBST(LUAINCS)
+AC_SUBST(LUALIBS)
 
 # check for C++ preprocessor and compiler and the library compiler
 AC_PROG_CXXCPP
@@ -136,5 +160,7 @@ Support HDF5 output format:                 $with_hdf5
   (requires libhdf5-dev)
 Support TFRecords output format:            $with_python
   (requires python 3.1 or later)
+Support LUA output format:                 $with_lua
+  (requires liblua5.2-dev)
 
 ])

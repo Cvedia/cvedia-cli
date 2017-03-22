@@ -192,6 +192,8 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 		LOG(ERROR) << "No data returned by API call";
 	}
 
+	LOG(DEBUG) << "GetDatasetMetadata end";
+
 	return meta;
 }
 
