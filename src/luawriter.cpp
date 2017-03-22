@@ -26,7 +26,7 @@ using namespace std;
 #include "easylogging++.h"
 #include "cvedia.hpp"
 #include "api.hpp"
-#include "LuaWriter.hpp"
+#include "luawriter.hpp"
 
 LuaWriter::LuaWriter(string export_name, map<string, string> options) {
 	luaL_openlibs(L);
