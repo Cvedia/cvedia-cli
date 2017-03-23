@@ -32,23 +32,21 @@ apt-get -y install libc6-dev-i386 g++-multilib
 ```
 **Step 3:** Install necessary system packages
 ```bash
-apt-get -y install autoconf pkg-config vim automake libtool curl make g++ \
-  unzip git gawk python3-dev python3-pip libcurl3 hdf5-tools hdf5-helpers \
-  libcurl4-openssl-dev libhdf5-dev cmake build-essential libprotobuf-dev \
-  libleveldb-dev libsnappy-dev libhdf5-serial-dev protobuf-compiler \
-  lua5.2 liblua5.2-dev libssl-dev libsqlite3-dev ibgtk2.0-dev pkg-config \
-  libavcodec-dev libavformat-dev libswscale-dev python-dev python-numpy \
-  libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev \
-  libdc1394-22-dev libglu1-mesa libgtkglext1 libhighgui-dev \
-  libilmbase-dev libilmbase12 libopenexr-dev libopenexr22 libpangox-1.0-0 \
-  libv4l-0 libv4lconvert0 libxmu6 libxt6 lua5.2 liblua5.2-dev luarocks
-  
-  luarocks install md5
-  luarocks install serpent
+apt-get -y install autoconf build-essential cmake curl gawk git \
+  hdf5-tools ibgtk2.0-dev libarchive-dev libavcodec-dev libavformat-dev \
+  libcurl4-openssl-dev libdc1394-22-dev libglu1-mesa libgtkglext1 \
+  libhdf5-serial-dev libhighgui-dev libilmbase-dev libjasper-dev \
+  libjpeg-dev libleveldb-dev liblua5.2-dev libopencv-dev libopenexr22 \
+  libopenexr-dev libpangox-1.0-0 libpng-dev libprotobuf-dev \
+  libsnappy-dev libsqlite3-dev libssl-dev libswscale-dev libtbb-dev \
+  libtiff-dev libtool libv4l-0 libv4lconvert0 libxmu6 libxt6 lua5.2 \
+  lua-md5 luarocks pkg-config protobuf-compiler python3-h5py \
+  python3-pip python3-pycurl python3-requests python-dev python-h5py \
+  python-pycurl python-requests unzip
 ```
-**Step 4:** Install necessary python packages
+**Step 4:** Install necessary lua packages
 ```bash
-pip3 install pycurl numpy h5py requests
+luarocks install serpent
 ```
 **Step 5:** Install tensorflow or tensorflox-gpu
 Pick ONE of the following depending if you'll utilize GPU or not.
@@ -59,45 +57,9 @@ pip3 install tensorflow
 ```bash
 pip3 install tensorflow-gpu
 ```
-**Step 6:** Install latest protobuf from git
+**Step 6:** Installation of latest cvedia-cli from git
 ```bash
 mkdir /usr/src/cvedia
-cd /usr/src/cvedia
-git clone https://github.com/google/protobuf
-cd /usr/src/cvedia/protobuf
-./autogen.sh
-./configure
-make 
-make check
-make install
-ldconfig 
-```
-**Step 7:** Install latest OpenCV from git
-```bash
-cd /usr/src/cvedia
-wget https://github.com/opencv/opencv/archive/3.2.0.zip
-unzip 3.2.0.zip
-cd /usr/src/cvedia/opencv-3.2.0
-mkdir release
-cd /usr/src/cvedia/opencv-3.2.0/release
-cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr ..
-make 
-make install
-```
-**Step 8:** Installation of latest libarchive from git
-```bash
-mkdir /usr/src/cvedia/libarchive
-cd /usr/src/cvedia/libarchive
-wget http://libarchive.org/downloads/libarchive-3.2.2.tar.gz
-tar xzf libarchive-3.2.2.tar.gz 
-cd /usr/src/cvedia/libarchive/libarchive-3.2.2
-./configure
-make
-make check
-make install
-```
-**Step 9:** Installation of latest cvedia-cli from git
-```bash
 cd /usr/src/cvedia
 git clone https://github.com/Cvedia/cvedia-cli
 cd /usr/src/cvedia/cvedia-cli
