@@ -56,6 +56,10 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 	req->retry_count = 0;
 	req->url = url;
 
+	struct curl_slist *list = NULL;
+  	list = curl_slist_append(list, "From: cvedia-cli");
+
+
 	// Setup curl object
 	CURL *curl_handle = curl_easy_init();
 	curl_easy_setopt(curl_handle, CURLOPT_URL, req->url.c_str());
@@ -63,9 +67,13 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)req);
 	curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, (void *)req);
 	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 60L);
+	curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, list);
 
 	// Execute a single synchronous fetch
 	int err = curl_easy_perform(curl_handle);
+
+	curl_slist_free_all(list); /* free the header list  */
+
 	if (!err) {
 
 		req->status = 0;
