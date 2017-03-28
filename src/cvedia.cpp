@@ -488,10 +488,12 @@ int StartExport(map<string,string> options) {
 
 		// Fetch basic stats on export
 		int num_batches = ceil(batch_size / (float)gBatchSize);
+		LOG(DEBUG) << "Num_batches " << num_batches;
 
 		StartFeedThread(options, 0, iter);
 		
 		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
+			LOG(DEBUG) << "Num_batches " << num_batches;
 
 			unsigned int queued_downloads = 0;
 
