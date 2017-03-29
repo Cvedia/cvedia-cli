@@ -505,6 +505,7 @@ int StartExport(map<string,string> options) {
 			}
 			if (gTerminateReadahead == true) {
 				LOG(INFO) << "Reached end of feed but not all batches returned.";
+				feed_mutex.unlock();
 				break;
 			}
 
