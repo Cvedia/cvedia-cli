@@ -10,7 +10,8 @@ AM_CPPFLAGS = ${libcurl_CFLAGS} -I$(PYINCS) -I$(NUMPY_INCLUDE_DIR)
 AM_LDFLAGS = -lcurl -lpthread -larchive -L/usr/local/lib -L/usr/lib
 
 if HAVE_HDF5
-AM_LDFLAGS += -lhdf5_cpp -lhdf5
+AM_CPPFLAGS += -I/usr/include/hdf5/serial
+AM_LDFLAGS += -lhdf5_cpp -lhdf5 -L/usr/lib/x86_64-linux-gnu/hdf5/serial
 endif
 
 if HAVE_OPENCV
