@@ -417,7 +417,7 @@ string PythonWriter::WriteData(Metadata* meta) {
 		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
 //			cout << "." << endl;
 //			cout << e->string_value[0].c_str() << endl;
-			AddToDict(meta_dict, PyUnicode_FromString("value"), PyUnicode_FromString(e->string_value[0].c_str()));
+			AddToDict(meta_dict, PyUnicode_FromString("value"), PyUnicode_FromString(e->string_value.c_str()));
 		}
 
 		if (e->id > -1) {

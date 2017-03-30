@@ -388,6 +388,7 @@ string WriteImageData(string filename, uint8_t* image_data, unsigned int len, bo
 	}
 
 	ofstream image_file;
+
 	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
 	image_file.write((char *)image_data, len);
 	image_file.close();		
@@ -487,7 +488,7 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 			meta_entry->id = gDatasetMeta->mapping_by_name[meta_entry->field_name]->id;
 		} else if (key == "value") {
 			if (meta_entry->value_type == METADATA_VALUE_TYPE_STRING) {
-
+/*
 				if (entry_itr->value.IsArray()) {
 
 					int value_size = entry_itr->value.Size();
@@ -495,8 +496,8 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 					for (int value_idx = 0; value_idx < value_size; ++value_idx) {
 						meta_entry->string_value.push_back(entry_itr->value[value_idx].GetString());
 					}
-				} else if (entry_itr->value.IsString()) {
-					meta_entry->string_value.push_back(entry_itr->value.GetString());					
+				} else*/ if (entry_itr->value.IsString()) {
+					meta_entry->string_value = entry_itr->value.GetString(); //.push_back(entry_itr->value.GetString());					
 				}
 			} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 				if (meta_entry->dtype == "") {

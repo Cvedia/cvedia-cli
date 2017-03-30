@@ -72,7 +72,7 @@ struct MetadataEntry {
 	vector<vector<float>> float_array; 
 	vector<vector<int>> int_array; 
 
-	vector<string> string_value;
+	string string_value;
 
 	// This metadata applies to all image or raw data vectors
 	int data_channels;
