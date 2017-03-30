@@ -142,7 +142,7 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 			}
 
 			meta->dataset = details_entry;
-			
+
 		} else {
 			LOG(ERROR) << "Missing dataset details";			
 			return NULL;
@@ -251,10 +251,10 @@ void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 		vector<Metadata* > feed = FetchBatch(options, batch_idx, iteration);
 
 		if (feed.size() == 0) {
-/*			do { //wait until all other batches are finished...
+			do { //wait until all other batches are finished...
 				sleep(1);
 			} while(feed_readahead.size() > 0);
-*/
+
 			gTerminateReadahead = true;
 		}
 
