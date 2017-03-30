@@ -68,7 +68,7 @@ autoheader
 aclocal
 autoconf
 automake
-./configure
+LDFLAGS=-L/usr/lib/x86_64-linux-gnu/hdf5/serial CFLAGS=-I/usr/include/hdf5/serial ./configure
 make
 make install
 ```

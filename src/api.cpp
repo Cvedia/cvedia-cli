@@ -201,7 +201,8 @@ void StartFeedThread(map<string,string> options, int batch_idx, int iteration) {
 	
 	gTerminateReadahead = false;
 
-	LOG(INFO) << "Starting feed readahead thread";
+	LOG(DEBUG) << "Starting feed readahead thread Index:" << batch_idx;
+	LOG(DEBUG) << "Starting feed readahead thread iteration:" << iteration;
 	th_readahead = thread(ReadaheadBatch, options, batch_idx, iteration);	
 }
 
@@ -217,10 +218,13 @@ void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 
 	do {
 
+		LOG(DEBUG) << "ReadaheadBatch fetchbatch " << batch_idx;
 		vector<Metadata* > feed = FetchBatch(options, batch_idx, iteration);
 
 		if (feed.size() == 0) {
-			LOG(DEBUG) << "Feed reader finished at batch_idx " << batch_idx;
+			do { //wait until all other batches are finished...
+				sleep(1);
+			} while(feed_readahead.size() > 0);
 			gTerminateReadahead = true;
 			return;
 		}
@@ -334,11 +338,13 @@ vector<Metadata* > ParseFeed(const char* feed) {
 				meta_vector.push_back(meta_record);
 
 			} else {
+				LOG(ERROR) << "Didn't get an Object on api_doc index: " << entry_idx;
 				goto invalid;
 			}
 		}
 
 	} else {
+		LOG(ERROR) << "API doc didn't contain an array";
 		goto invalid;
 	}
 
@@ -346,6 +352,7 @@ vector<Metadata* > ParseFeed(const char* feed) {
 
 	invalid:
 	LOG(ERROR) << "ParseFeed() Error parsing JSON data";
+	LOG(DEBUG) << feed;
 	meta_vector.clear();
 	return meta_vector;
 }

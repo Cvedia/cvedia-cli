@@ -1,51 +1,63 @@
-FROM webdevops/base:ubuntu-16.04
+# Base Dockerfile to provide dockerized cvedia app
+#
+#  Build:  docker build -t cvedia-cli ./
+#
+#  Usage:  docker run --rm --net=host \
+#   --volume [path]:[path] \
+#   cvedia-cli [params]
+#
+#  Usage (gpu): docker run --rm --net=host \
+#   --device /dev/nvidia0:/dev/nvidia0 \
+#   --device /dev/nvidiactl:/dev/nvidiactl \
+#   --device /dev/nvidia-uvm:/dev/nvidia-uvm \
+#   --volume [path]:[path] \
+#   cvedia-cli [params]
+# 
+FROM ubuntu:latest
 
-RUN apt-get update
-RUN export DEBIAN_FRONTEND=noninteractive
-RUN apt-get -y install autoconf pkg-config vim automake libtool curl make g++ unzip git gawk python3-dev python3-pip libcurl3 hdf5-tools hdf5-helpers libcurl4-openssl-dev libhdf5-dev cmake build-essential 
-RUN apt-get -y install libc6-dev-i386 g++-multilib #support for 32 bit install
-RUN apt-get -y install libprotobuf-dev libleveldb-dev libsnappy-dev libhdf5-serial-dev protobuf-compiler lua5.2 liblua5.2-dev libssl-dev libsqlite3-dev ibgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev libdc1394-22-dev libopencv-dev
-RUN pip3 install pycurl numpy h5py requests
+ENV tnsrpkg  tensorflow
+#ENV tnsrpkg tensorflow-gpu
 
-RUN mkdir /home/root
-WORKDIR /home/root
-RUN git clone https://github.com/google/protobuf
-WORKDIR /home/root/protobuf
-RUN ./autogen.sh
-RUN ./configure
-RUN make
-RUN make check
-RUN make install
-RUN ldconfig 
+RUN apt-get update && \
+  apt-get -y install autoconf build-essential cmake curl gawk git \
+    hdf5-tools ibgtk2.0-dev libarchive-dev libavcodec-dev libavformat-dev \
+    libcurl4-openssl-dev libdc1394-22-dev libglu1-mesa libgtkglext1 \
+    libhdf5-serial-dev libhighgui-dev libilmbase-dev libjasper-dev \
+    libjpeg-dev libleveldb-dev liblua5.2-dev libopencv-dev libopenexr22 \
+    libopenexr-dev libpangox-1.0-0 libpng-dev libprotobuf-dev \
+    libsnappy-dev libsqlite3-dev libssl-dev libswscale-dev libtbb-dev \
+    libtiff-dev libtool libv4l-0 libv4lconvert0 libxmu6 libxt6 \
+    lua5.2 lua-md5 pkg-config protobuf-compiler python3-h5py \
+    python3-pip python3-pycurl python3-requests python-dev python-h5py \
+    python-pycurl python-requests rsync unzip wget
 
-WORKDIR /home/root
-RUN wget https://github.com/opencv/opencv/archive/3.2.0.zip
-RUN unzip 3.2.0.zip
-WORKDIR /home/root/opencv-3.2.0
-RUN mkdir release
-WORKDIR /home/root/opencv-3.2.0/release
-RUN cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr ..
-RUN make
-RUN make install
+RUN mkdir -p /usr/src/cvedia/luarocks && cd /usr/src/cvedia/luarocks && \
+  wget http://luarocks.github.io/luarocks/releases/luarocks-2.4.2.tar.gz && \
+  tar xzf luarocks-2.4.2.tar.gz && \
+  cd /usr/src/cvedia/luarocks/luarocks-2.4.2 && \
+  ./configure --prefix=/usr && \
+  make build && \
+  make install && \
+  luarocks install serpent
 
-RUN apt-get install luarocks -y
-RUN luarocks install md5
+RUN pip3 install ${tnsrpkg}
 
-RUN mkdir /home/root/libarchive
-WORKDIR /home/root/libarchive
-RUN wget http://libarchive.org/downloads/libarchive-3.2.2.tar.gz
-RUN tar xzf libarchive-3.2.2.tar.gz 
-WORKDIR /home/root/libarchive/libarchive-3.2.2
-RUN ./configure
-RUN make
-RUN make check
-RUN make install
+COPY  cvedia.patch /usr/src/cvedia
 
-WORKDIR /var/www/cvedia-cli
-RUN ACLOCAL_PATH="/var/www/cvedia-cli" autoreconf -if
-RUN autoheader
-RUN aclocal
-RUN autoconf
-RUN automake
-RUN ./configure
-RUN make
+RUN mkdir -p /usr/src/cvedia && cd /usr/src/cvedia && \
+  git clone https://github.com/Cvedia/cvedia-cli && \
+  cd /usr/src/cvedia/cvedia-cli && \
+  ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
+  autoheader && \
+  aclocal && \
+  autoconf && \
+  automake && \
+  LDFLAGS=-L/usr/lib/x86_64-linux-gnu/hdf5/serial CFLAGS=-I/usr/include/hdf5/serial ./configure && \
+  make -j 4 && \
+  make install
+
+WORKDIR /usr/src/cvedia/cvedia-cli/src
+
+VOLUME ["/data"]
+
+ENTRYPOINT ["/usr/local/bin/cvedia","-d","/data"]
