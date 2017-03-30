@@ -70,7 +70,7 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, list);
 
 	// Execute a single synchronous fetch
-	int err = curl_easy_perform(curl_handle);
+	CURLcode err = curl_easy_perform(curl_handle);
 
 	curl_slist_free_all(list); /* free the header list  */
 
@@ -82,7 +82,7 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 
 		return req;
 	} else {
-		LOG(ERROR) << "Could not communicate with API: " << url;
+		LOG(ERROR) << "CURL returned \"" << curl_easy_strerror(err) << "\" for " << url;
 	}
 
 	// Fail

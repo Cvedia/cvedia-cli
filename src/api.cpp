@@ -119,6 +119,35 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 
 		meta->count = count;
 
+		if (d.HasMember("dataset")) {
+
+			LOG(DEBUG) << "Loading dataset details";
+
+			Value& dset = d["dataset"];
+
+			DatasetDetails* details_entry = new DatasetDetails;
+
+			// Iterate through all object members
+			for (Value::ConstMemberIterator itr = dset.MemberBegin(); itr != dset.MemberEnd(); ++itr) {
+
+				string key = itr->name.GetString();
+
+				if (key == "name") {
+					details_entry->name = itr->value.GetString();
+				} else if (key == "id") {
+					details_entry->id = itr->value.GetInt();
+				} else if (key == "description") {
+					details_entry->description = itr->value.GetString();
+				}
+			}
+
+			meta->dataset = details_entry;
+			
+		} else {
+			LOG(ERROR) << "Missing dataset details";			
+			return NULL;
+		}
+
 		if (d.HasMember("mapping")) {
 
 			LOG(DEBUG) << "Loading output mapping";
@@ -222,11 +251,11 @@ void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 		vector<Metadata* > feed = FetchBatch(options, batch_idx, iteration);
 
 		if (feed.size() == 0) {
-			do { //wait until all other batches are finished...
+/*			do { //wait until all other batches are finished...
 				sleep(1);
 			} while(feed_readahead.size() > 0);
+*/
 			gTerminateReadahead = true;
-			return;
 		}
 
 		feed_mutex.lock();
@@ -271,9 +300,11 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int ite
 
 		string data_str( req->read_data.begin(), req->read_data.end() );
 		meta_vector = ParseFeed(data_str.c_str());
+	
+		LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
+	} else {
+		LOG(ERROR) << "Unable to fetch next batch from API";		
 	}
-
-	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
 
 	return meta_vector;
 }

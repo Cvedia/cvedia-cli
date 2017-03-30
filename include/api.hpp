@@ -35,6 +35,12 @@ struct DatasetMapping {
 	int field_id;
 };
 
+struct DatasetDetails {
+	int id;
+	string name;
+	string description;
+};
+
 struct DatasetSet {
 	string set_name;
 	float set_perc;
@@ -48,6 +54,7 @@ struct DatasetMetadata {
 	map<string, DatasetMapping* > mapping_by_name;
 	map<int, DatasetMapping* > mapping_by_field_id;
 
+	DatasetDetails* dataset;
 	vector<DatasetSet> sets;
 };
 

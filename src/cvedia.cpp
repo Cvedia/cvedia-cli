@@ -213,11 +213,6 @@ int main(int argc, char* argv[]) {
 
 	option::Descriptor *usage = &usage_vec[0]; 
 
-	struct winsize w;
-	
-	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-	lTermWidth = w.ws_col;
-
 	map<string,string> mod_options;
 	
 	argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
@@ -466,6 +461,8 @@ int StartExport(map<string,string> options) {
 		return -1;
 	}
 
+	LOG(INFO) << "Dataset: " << gDatasetMeta->dataset->name;
+
 	LOG(INFO) << "Exporting the following sets:";
 
 	for (DatasetSet s : gDatasetMeta->sets) {
@@ -479,7 +476,7 @@ int StartExport(map<string,string> options) {
 
 	for (int iter=0;iter<gIterations&&gInterrupted==false;iter++) {
 
-		CurlReader *p_reader = new CurlReader();
+		CurlReader* p_reader = new CurlReader();
 		p_reader->SetNumThreads(gDownloadThreads);
 
 
@@ -534,6 +531,7 @@ int StartExport(map<string,string> options) {
 
 			if (meta_data.size() == 0) {
 				LOG(WARNING) << "No metadata returned by API, end of dataset?";
+				StopFeedThread();
 				return -1;
 			}
 
@@ -1323,6 +1321,12 @@ void ConfigureLogger() {
 
 void DisplayProgressBar(string text, float progress, int cur_value, int max_value) {
 	cout << text << "[";
+
+	struct winsize w;
+	
+	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+	lTermWidth = w.ws_col;
+
 	int bar_width = lTermWidth - (to_string(cur_value).length() + to_string(max_value).length() + 6 + text.length());
 	int pos = bar_width * progress;
 	
