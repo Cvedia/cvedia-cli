@@ -280,7 +280,7 @@ string LuaWriter::WriteData(Metadata* meta) {
 				return "";				
 			}
 		} else if (e->value_type == METADATA_VALUE_TYPE_STRING) {
-			lua_pushstring(L, e->string_value[0].c_str());
+			lua_pushstring(L, e->string_value.c_str());
 			lua_rawseti( L, metadataTable, metadataIndex );
 		}
 
