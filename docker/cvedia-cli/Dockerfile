@@ -42,8 +42,6 @@ RUN mkdir -p /usr/src/cvedia/luarocks && cd /usr/src/cvedia/luarocks && \
 
 RUN pip3 install ${tnsrpkg}
 
-COPY  cvedia.patch /usr/src/cvedia
-
 RUN mkdir -p /usr/src/cvedia && cd /usr/src/cvedia && \
   git clone https://github.com/Cvedia/cvedia-cli && \
   cd /usr/src/cvedia/cvedia-cli && \
