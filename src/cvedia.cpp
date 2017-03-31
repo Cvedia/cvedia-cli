@@ -590,7 +590,11 @@ int StartExport(map<string,string> options) {
 
 			meta_data.clear();
 
-			WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+			bool bret = WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+			if (bret == false) { // We failed to write some metadata, best to end here
+				StopFeedThread();
+				return 0;
+			}
 
 			p_reader->ClearData();
 

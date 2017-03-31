@@ -151,13 +151,14 @@ string CaffeImageDataWriter::WriteData(Metadata* meta) {
 			ground = entry;
 	}
 
-	if (source->value_type == METADATA_VALUE_TYPE_IMAGE || source->value_type == METADATA_VALUE_TYPE_RAW) {
+	if (source != NULL && (source->value_type == METADATA_VALUE_TYPE_IMAGE || source->value_type == METADATA_VALUE_TYPE_RAW)) {
 		output_values[source->id] = source->file_uri;
 	} else {
 		LOG(ERROR) << "CaffeImageDataWriter::WriteData() First field needs to be of type Image or Raw";
+		return "";
 	}
 
-	if (ground->value_type == METADATA_VALUE_TYPE_STRING) {
+	if (ground != NULL && ground->value_type == METADATA_VALUE_TYPE_STRING) {
 
 		int category_id = 0;
 		// Convert the category to an integer in the lookup table.
@@ -172,7 +173,7 @@ string CaffeImageDataWriter::WriteData(Metadata* meta) {
 
 		output_values[ground->id] = to_string(category_id);
 
-	} else if (ground->value_type == METADATA_VALUE_TYPE_NUMERIC) {
+	} else if (ground != NULL && ground->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 
 		if (ground->dtype == "float") {
 			output_values[ground->id] += to_string(ground->float_value);
@@ -181,6 +182,7 @@ string CaffeImageDataWriter::WriteData(Metadata* meta) {
 		}
 	} else {
 		LOG(ERROR) << "CaffeImageDataWriter::WriteData() Second field needs to be String or Numeric";		
+		return "";
 	}
 
 	// Output all fields in the correct order
