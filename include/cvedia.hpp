@@ -20,7 +20,7 @@ string JoinStringVector(const vector<string>& vec, const char* delim);
 int StartExport(map<string,string> options);
 string ReplaceString(string subject, const string& search, const string& replace);
 void DisplayProgress(string prefix, float progress, int cur_value, int max_value, string suffix);
-void DisplayProgressBar(float progress, int cur_value, int max_value);
+void DisplayProgressBar(string text, float progress, int cur_value, int max_value);
 int ReadRequestToMetadataEntry(ReadRequest* req, MetadataEntry* entry);
 vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, ReadRequest* >& responses);
 bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* p_mdb, map<string,string> options);

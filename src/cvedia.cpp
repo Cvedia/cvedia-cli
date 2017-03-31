@@ -213,11 +213,6 @@ int main(int argc, char* argv[]) {
 
 	option::Descriptor *usage = &usage_vec[0]; 
 
-	struct winsize w;
-	
-	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-	lTermWidth = w.ws_col;
-
 	map<string,string> mod_options;
 	
 	argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
@@ -466,6 +461,8 @@ int StartExport(map<string,string> options) {
 		return -1;
 	}
 
+	LOG(INFO) << "Dataset: " << gDatasetMeta->dataset->name;
+
 	LOG(INFO) << "Exporting the following sets:";
 
 	for (DatasetSet s : gDatasetMeta->sets) {
@@ -479,7 +476,7 @@ int StartExport(map<string,string> options) {
 
 	for (int iter=0;iter<gIterations&&gInterrupted==false;iter++) {
 
-		CurlReader *p_reader = new CurlReader();
+		CurlReader* p_reader = new CurlReader();
 		p_reader->SetNumThreads(gDownloadThreads);
 
 
@@ -505,6 +502,7 @@ int StartExport(map<string,string> options) {
 			}
 			if (gTerminateReadahead == true) {
 				LOG(INFO) << "Reached end of feed but not all batches returned.";
+				feed_mutex.unlock();
 				break;
 			}
 
@@ -533,10 +531,11 @@ int StartExport(map<string,string> options) {
 
 			if (meta_data.size() == 0) {
 				LOG(WARNING) << "No metadata returned by API, end of dataset?";
+				StopFeedThread();
 				return -1;
 			}
 
-			LOG(DEBUG) << "Starting download for batch #" << to_string(batch_idx);
+			LOG(INFO) << "Starting download for batch #" << to_string(batch_idx);
 
 			seconds = time(NULL);
 
@@ -565,7 +564,7 @@ int StartExport(map<string,string> options) {
 				stats = p_reader->GetStats();
 
 				if (time(NULL) != seconds) {
-					DisplayProgressBar(stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+					DisplayProgressBar("Download: ", stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
 
 					seconds = time(NULL);
 				}
@@ -574,14 +573,13 @@ int StartExport(map<string,string> options) {
 			}
 
 			// Display the 100% complete
-			DisplayProgressBar(1, stats.num_reads_completed, queued_downloads);
+			DisplayProgressBar("Download: ", 1, stats.num_reads_completed, queued_downloads);
 			cout << endl;
 
 			// Update stats for last time
 			stats = p_reader->GetStats();
 
 			LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
-			LOG(INFO) << "Syncing batch to disk...";
 
 			p_reader->ClearStats();
 
@@ -592,7 +590,11 @@ int StartExport(map<string,string> options) {
 
 			meta_data.clear();
 
-			WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+			bool bret = WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+			if (bret == false) { // We failed to write some metadata, best to end here
+				StopFeedThread();
+				return 0;
+			}
 
 			p_reader->ClearData();
 
@@ -804,7 +806,7 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 	for (Metadata* m : meta_data) {
 
 		if (time(NULL) != seconds) {
-			DisplayProgressBar(cur_write / (float)to_write, cur_write, to_write);
+			DisplayProgressBar("Syncing: ", cur_write / (float)to_write, cur_write, to_write);
 
 			seconds = time(NULL);
 		}
@@ -909,7 +911,7 @@ bool WriteMetadata(vector<Metadata* > meta_data, IDataWriter *p_writer, MetaDb* 
 		return false;
 	}
 
-	DisplayProgressBar(1, cur_write, to_write);
+	DisplayProgressBar("Syncing: ", 1, cur_write, to_write);
 	cout << endl;
 
 	return true;
@@ -1224,13 +1226,13 @@ int VerifyApi(map<string,string> options) {
 		}
 
 		if (time(NULL) != seconds) {
-			DisplayProgressBar(batch_idx / (float)num_batches, batch_idx, num_batches);
+			DisplayProgressBar("", batch_idx / (float)num_batches, batch_idx, num_batches);
 
 			seconds = time(NULL);
 		}
 	}
 
-	DisplayProgressBar(1, batch_idx, num_batches);
+	DisplayProgressBar("", 1, batch_idx, num_batches);
 	cout << endl;
 
 	LOG(INFO) << "Found locally: " << found_local;
@@ -1321,9 +1323,15 @@ void ConfigureLogger() {
 	el::Loggers::reconfigureAllLoggers(config);
 }
 
-void DisplayProgressBar(float progress, int cur_value, int max_value) {
-	cout << "[";
-	int bar_width = lTermWidth - (to_string(cur_value).length() + to_string(max_value).length() + 6);
+void DisplayProgressBar(string text, float progress, int cur_value, int max_value) {
+	cout << text << "[";
+
+	struct winsize w;
+	
+	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+	lTermWidth = w.ws_col;
+
+	int bar_width = lTermWidth - (to_string(cur_value).length() + to_string(max_value).length() + 6 + text.length());
 	int pos = bar_width * progress;
 	
 	for (int i = 0; i < bar_width; ++i) {

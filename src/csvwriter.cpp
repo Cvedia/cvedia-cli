@@ -145,10 +145,10 @@ string CsvWriter::WriteData(Metadata* meta) {
 
 			string tmp_line;
 
-			for (string val: e->string_value) {
+//			for (string val: e->string_value) {
 
-				tmp_line += (tmp_line == "" ? "\""  : ",") + val;
-			}
+				tmp_line += (tmp_line == "" ? "\""  : ",") + e->string_value;
+//			}
 			output_values[e->id] = tmp_line + "\"";
 		} else if (e->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 

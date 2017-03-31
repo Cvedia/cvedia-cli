@@ -119,6 +119,35 @@ DatasetMetadata* GetDatasetMetadata(string job_id) {
 
 		meta->count = count;
 
+		if (d.HasMember("dataset")) {
+
+			LOG(DEBUG) << "Loading dataset details";
+
+			Value& dset = d["dataset"];
+
+			DatasetDetails* details_entry = new DatasetDetails;
+
+			// Iterate through all object members
+			for (Value::ConstMemberIterator itr = dset.MemberBegin(); itr != dset.MemberEnd(); ++itr) {
+
+				string key = itr->name.GetString();
+
+				if (key == "name") {
+					details_entry->name = itr->value.GetString();
+				} else if (key == "id") {
+					details_entry->id = itr->value.GetInt();
+				} else if (key == "description") {
+					details_entry->description = itr->value.GetString();
+				}
+			}
+
+			meta->dataset = details_entry;
+
+		} else {
+			LOG(ERROR) << "Missing dataset details";			
+			return NULL;
+		}
+
 		if (d.HasMember("mapping")) {
 
 			LOG(DEBUG) << "Loading output mapping";
@@ -225,8 +254,8 @@ void ReadaheadBatch(map<string,string> options, int batch_idx, int iteration) {
 			do { //wait until all other batches are finished...
 				sleep(1);
 			} while(feed_readahead.size() > 0);
+
 			gTerminateReadahead = true;
-			return;
 		}
 
 		feed_mutex.lock();
@@ -271,9 +300,11 @@ vector<Metadata* > FetchBatch(map<string,string> options, int batch_idx, int ite
 
 		string data_str( req->read_data.begin(), req->read_data.end() );
 		meta_vector = ParseFeed(data_str.c_str());
+	
+		LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
+	} else {
+		LOG(ERROR) << "Unable to fetch next batch from API";		
 	}
-
-	LOG(DEBUG) << "Received " << req->read_data.size() << " bytes (" << to_string(meta_vector.size()) << " entries) from API";
 
 	return meta_vector;
 }
@@ -395,6 +426,7 @@ string WriteImageData(string filename, uint8_t* image_data, unsigned int len, bo
 	}
 
 	ofstream image_file;
+
 	image_file.open(path + filename, ios::out | ios::trunc | ios::binary);
 	image_file.write((char *)image_data, len);
 	image_file.close();		
@@ -494,7 +526,7 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 			meta_entry->id = gDatasetMeta->mapping_by_name[meta_entry->field_name]->id;
 		} else if (key == "value") {
 			if (meta_entry->value_type == METADATA_VALUE_TYPE_STRING) {
-
+/*
 				if (entry_itr->value.IsArray()) {
 
 					int value_size = entry_itr->value.Size();
@@ -502,8 +534,8 @@ Metadata* ParseDataEntry(const Value &entryObj, Metadata* meta_output) {
 					for (int value_idx = 0; value_idx < value_size; ++value_idx) {
 						meta_entry->string_value.push_back(entry_itr->value[value_idx].GetString());
 					}
-				} else if (entry_itr->value.IsString()) {
-					meta_entry->string_value.push_back(entry_itr->value.GetString());					
+				} else*/ if (entry_itr->value.IsString()) {
+					meta_entry->string_value = entry_itr->value.GetString(); //.push_back(entry_itr->value.GetString());					
 				}
 			} else if (meta_entry->value_type == METADATA_VALUE_TYPE_NUMERIC) {
 				if (meta_entry->dtype == "") {

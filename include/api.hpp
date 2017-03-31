@@ -35,6 +35,12 @@ struct DatasetMapping {
 	int field_id;
 };
 
+struct DatasetDetails {
+	int id;
+	string name;
+	string description;
+};
+
 struct DatasetSet {
 	string set_name;
 	float set_perc;
@@ -48,6 +54,7 @@ struct DatasetMetadata {
 	map<string, DatasetMapping* > mapping_by_name;
 	map<int, DatasetMapping* > mapping_by_field_id;
 
+	DatasetDetails* dataset;
 	vector<DatasetSet> sets;
 };
 
@@ -72,7 +79,7 @@ struct MetadataEntry {
 	vector<vector<float>> float_array; 
 	vector<vector<int>> int_array; 
 
-	vector<string> string_value;
+	string string_value;
 
 	// This metadata applies to all image or raw data vectors
 	int data_channels;
