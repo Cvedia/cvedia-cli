@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased 
 ### Changed
+- Fixed multiple iterations ending prematurely
 - Fixed CaffeImageData output module
 - Fixed hanging cli on multi iteration
 
