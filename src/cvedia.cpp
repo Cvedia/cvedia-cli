@@ -487,6 +487,8 @@ int StartExport(map<string,string> options) {
 		int num_batches = ceil(batch_size / (float)gBatchSize);
 		LOG(DEBUG) << "Num_batches " << num_batches;
 
+		feed_readahead.clear();
+		
 		StartFeedThread(options, 0, iter);
 		
 		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
@@ -530,80 +532,79 @@ int StartExport(map<string,string> options) {
 	//		vector<Metadata* > meta_data = FetchBatch(options, batch_idx);
 
 			if (meta_data.size() == 0) {
-				LOG(WARNING) << "No metadata returned by API, end of dataset?";
-				StopFeedThread();
-				return -1;
-			}
+				LOG(INFO) << "End of results reached";
+			} else {
 
-			LOG(INFO) << "Starting download for batch #" << to_string(batch_idx);
+				LOG(INFO) << "Starting download for batch #" << to_string(batch_idx);
 
-			seconds = time(NULL);
+				seconds = time(NULL);
 
-			// Queue up all requests in this batch
-			for (Metadata* m : meta_data) {
+				// Queue up all requests in this batch
+				for (Metadata* m : meta_data) {
 
-				if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
-					for (MetadataEntry* entry : m->entries) {
+					if (!p_mdb->ContainsHash(m->hash, "api_hash")) {
+						for (MetadataEntry* entry : m->entries) {
 
-						if (entry->url != "") {
-							p_reader->QueueUrl(md5(entry->url), entry->url);
-							queued_downloads++;
+							if (entry->url != "") {
+								p_reader->QueueUrl(md5(entry->url), entry->url);
+								queued_downloads++;
+							}
 						}
+					} else {
+						m->skip_record = true;
+						LOG(TRACE) << m->hash << " is already in hashes db";
 					}
-				} else {
-					m->skip_record = true;
-					LOG(TRACE) << m->hash << " is already in hashes db";
 				}
-			}
 
-			ReaderStats stats = p_reader->GetStats();
+				ReaderStats stats = p_reader->GetStats();
 
-			// Loop until all downloads are finished
-			while (stats.num_reads_completed < queued_downloads) {
+				// Loop until all downloads are finished
+				while (stats.num_reads_completed < queued_downloads) {
 
+					stats = p_reader->GetStats();
+
+					if (time(NULL) != seconds) {
+						DisplayProgressBar("Download: ", stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+
+						seconds = time(NULL);
+					}
+
+					usleep(100);
+				}
+
+				// Display the 100% complete
+				DisplayProgressBar("Download: ", 1, stats.num_reads_completed, queued_downloads);
+				cout << endl;
+
+				// Update stats for last time
 				stats = p_reader->GetStats();
 
-				if (time(NULL) != seconds) {
-					DisplayProgressBar("Download: ", stats.num_reads_completed / (float)queued_downloads, stats.num_reads_completed, queued_downloads);
+				LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
 
-					seconds = time(NULL);
+				p_reader->ClearStats();
+
+				// Downloading finished, gather all cURL responses
+				map<string, ReadRequest* > responses = p_reader->GetAllData();
+
+				vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
+
+				meta_data.clear();
+
+				bool bret = WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
+				if (bret == false) { // We failed to write some metadata, best to end here
+					StopFeedThread();
+					return 0;
 				}
 
-				usleep(100);
+				p_reader->ClearData();
+
+				// We are completely done with the response data
+				for (auto& kv : responses) {
+					delete kv.second;
+				}
+
+				responses.clear();
 			}
-
-			// Display the 100% complete
-			DisplayProgressBar("Download: ", 1, stats.num_reads_completed, queued_downloads);
-			cout << endl;
-
-			// Update stats for last time
-			stats = p_reader->GetStats();
-
-			LOG(INFO) << "Downloaded " << to_string(stats.bytes_read) << " bytes";
-
-			p_reader->ClearStats();
-
-			// Downloading finished, gather all cURL responses
-			map<string, ReadRequest* > responses = p_reader->GetAllData();
-
-			vector<Metadata* > meta_data_unpacked = UnpackMetadata(meta_data, responses);
-
-			meta_data.clear();
-
-			bool bret = WriteMetadata(meta_data_unpacked, p_writer, p_mdb, options);
-			if (bret == false) { // We failed to write some metadata, best to end here
-				StopFeedThread();
-				return 0;
-			}
-
-			p_reader->ClearData();
-
-			// We are completely done with the response data
-			for (auto& kv : responses) {
-				delete kv.second;
-			}
-
-			responses.clear();
 		}
 
 		StopFeedThread();
