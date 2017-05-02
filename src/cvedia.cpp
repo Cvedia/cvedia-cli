@@ -62,7 +62,7 @@ INITIALIZE_EASYLOGGINGPP
 int gDebug 		= 1;
 
 int gBatchSize 			= 256;
-int gDownloadThreads 	= 100;
+int gDownloadThreads 	= 25;
 int gIterations 		= 1;
 
 vector<export_module> gModules;
@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
 	usage_vec.push_back({VERIFYLOC,	0,"" , "verify-local",option::Arg::None, "  --verify-local  \tPerform integrity check between an exported dataset and the local Meta Db" });
 	usage_vec.push_back({OUTPUT,   	0,"o", "output",option::Arg::Required, strmods.c_str() });
 	usage_vec.push_back({BATCHSIZE, 0,"b", "batch-size",option::Arg::Required, "  --batch-size=<num>, -b <num>  \tNumber of images to retrieve in a single batch (default: 256)." });
-	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 100)." });
+	usage_vec.push_back({THREADS,   0,"t", "threads",option::Arg::Required, "  --threads=<num>, -t <num>  \tNumber of download threads (default: 25)." });
 	usage_vec.push_back({API,    	0,"", "api",option::Arg::Required, "  --api=<url>  \tREST API Connecting point (default: http://api.cvedia.com/)"  });
 	usage_vec.push_back({IMAGES_EXTERNAL,   0,"", "images-external",option::Arg::None, "  --images-external  \tStore images/blobs as files on disk. This is default for output formats that dont support binary storage" });
 	usage_vec.push_back({IMAGES_SAME_DIR,   0,"", "images-same-dir",option::Arg::None, "  --images-same-dir  \tStore all images inside a single folder instead of tree structure." });
@@ -488,7 +488,7 @@ int StartExport(map<string,string> options) {
 		LOG(DEBUG) << "Num_batches " << num_batches;
 
 		feed_readahead.clear();
-		
+
 		StartFeedThread(options, 0, iter);
 		
 		for (int batch_idx = 0; batch_idx < num_batches && gInterrupted == false; batch_idx++) {
@@ -997,10 +997,19 @@ vector<Metadata* > UnpackMetadata(vector<Metadata* >& meta_data, map<string, Rea
 									responses[md5(file_name)] = new_req;
 								}
 								break;
+							} else if (r == ARCHIVE_FATAL) {
+								LOG(ERROR) << "Downloading " << entry->url << " returned ARCHIVE_FATAL";
+								break;
+							} else if (r == ARCHIVE_RETRY) {
+								LOG(ERROR) << "Downloading " << entry->url << " returned ARCHIVE_RETRY";
+								break;
+							} else if (r == ARCHIVE_WARN) {
+								LOG(ERROR) << "Downloading " << entry->url << " returned ARCHIVE_WARN";
+								break;
+							} else {
+								// Insert data in the request buffer
+								new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
 							}
-
-							// Insert data in the request buffer
-							new_req->read_data.insert(new_req->read_data.end(),&buff[0],&buff[size]);
 						}
 					}
 
