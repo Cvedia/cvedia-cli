@@ -26,29 +26,32 @@ This is the installation procedure
 ```bash
 apt-get update
 ```
-**Step 2:** Install i386 libraries (optional)
+**Step 2:** Install necessary system packages
 ```bash
-apt-get -y install libc6-dev-i386 g++-multilib
+  apt-get -y install autoconf build-essential cmake curl gawk git \
+    hdf5-tools ibgtk2.0-dev libarchive-dev libavcodec-dev libavformat-dev \
+    libcurl4-openssl-dev libdc1394-22-dev libglu1-mesa libgtkglext1 \
+    libhdf5-serial-dev libhighgui-dev libilmbase-dev libjasper-dev \
+    libjpeg-dev libleveldb-dev liblua5.2-dev libopencv-dev libopenexr22 \
+    libopenexr-dev libpangox-1.0-0 libpng-dev libprotobuf-dev \
+    libsnappy-dev libsqlite3-dev libssl-dev libswscale-dev libtbb-dev \
+    libtiff-dev libtool libv4l-0 libv4lconvert0 libxmu6 libxt6 \
+    lua5.2 lua-md5 pkg-config protobuf-compiler python3-h5py \
+    python3-pip python3-pycurl python3-requests python-dev python-h5py \
+    python-pycurl python-requests rsync unzip wget
 ```
-**Step 3:** Install necessary system packages
+**Step 3:** Install necessary lua packages
 ```bash
-apt-get -y install autoconf build-essential cmake curl gawk git \
-  hdf5-tools ibgtk2.0-dev libarchive-dev libavcodec-dev libavformat-dev \
-  libcurl4-openssl-dev libdc1394-22-dev libglu1-mesa libgtkglext1 \
-  libhdf5-serial-dev libhighgui-dev libilmbase-dev libjasper-dev \
-  libjpeg-dev libleveldb-dev liblua5.2-dev libopencv-dev libopenexr22 \
-  libopenexr-dev libpangox-1.0-0 libpng-dev libprotobuf-dev \
-  libsnappy-dev libsqlite3-dev libssl-dev libswscale-dev libtbb-dev \
-  libtiff-dev libtool libv4l-0 libv4lconvert0 libxmu6 libxt6 lua5.2 \
-  lua-md5 luarocks pkg-config protobuf-compiler python3-h5py \
-  python3-pip python3-pycurl python3-requests python-dev python-h5py \
-  python-pycurl python-requests unzip
+mkdir -p /usr/src/cvedia/luarocks && cd /usr/src/cvedia/luarocks
+wget http://luarocks.github.io/luarocks/releases/luarocks-2.4.2.tar.gz
+tar xzf luarocks-2.4.2.tar.gz
+/usr/src/cvedia/luarocks/luarocks-2.4.2
+./configure --prefix=/usr && \
+  make build && \
+  make install && \
+  luarocks install serpent
 ```
-**Step 4:** Install necessary lua packages
-```bash
-luarocks install serpent
-```
-**Step 5:** Install tensorflow or tensorflox-gpu
+**Step 4:** Install tensorflow or tensorflox-gpu
 Pick ONE of the following depending if you'll utilize GPU or not.
 ```bash
 pip3 install tensorflow
@@ -57,22 +60,19 @@ pip3 install tensorflow
 ```bash
 pip3 install tensorflow-gpu
 ```
-**Step 6:** Installation of latest cvedia-cli from git
+**Step 5:** Installation of latest cvedia-cli from git
 ```bash
-mkdir /usr/src/cvedia
-cd /usr/src/cvedia
+mkdir -p /usr/src/cvedia && cd /usr/src/cvedia
 git clone https://github.com/Cvedia/cvedia-cli
 cd /usr/src/cvedia/cvedia-cli
-ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if
-autoheader
-aclocal
-autoconf
-automake
-LDFLAGS=-L/usr/lib/x86_64-linux-gnu/hdf5/serial CFLAGS=-I/usr/include/hdf5/serial ./configure
-make
-make install
+ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
+  autoheader && \
+  aclocal && \
+  autoconf && \
+  automake && \
+  LDFLAGS=-L/usr/lib/x86_64-linux-gnu/hdf5/serial CFLAGS=-I/usr/include/hdf5/serial ./configure && \
+  make -j 4 && \
+  make install
 ```
 
 This concludes the installation procedure. If all the above went well, you can use ```cvedia``` from the command line to interface to Cvedia.
-
-
