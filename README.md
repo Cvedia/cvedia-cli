@@ -52,7 +52,7 @@ apt-get update
 mkdir -p /usr/src/cvedia/luarocks && cd /usr/src/cvedia/luarocks
 wget http://luarocks.github.io/luarocks/releases/luarocks-2.4.2.tar.gz
 tar xzf luarocks-2.4.2.tar.gz
-/usr/src/cvedia/luarocks/luarocks-2.4.2
+cd /usr/src/cvedia/luarocks/luarocks-2.4.2
 ./configure --prefix=/usr && \
   make build && \
   make install && \
