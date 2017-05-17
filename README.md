@@ -19,7 +19,8 @@ The TFRecords engine also serves as an example on how to write your own custom P
 Following you can find installation procedures for:
 - [Ubuntu 16.04 Xenial](#u16)
 - [Ubuntu 14.04 Trusty](#u14)
-
+- [Windows 10](#w10)
+- [Docker](#docker)
 
 <a name=u16></a>
 # Installation for Ubuntu 16.04
@@ -152,6 +153,46 @@ automake
 make -j 4
 make install
 ```
+
+<a name=w10></a>
+# Installation for Windows 10 #
+
+Windows 10 now supports Ubuntu 16 command line through Developer mode. 
+
+To install Bash shell on your Windows 10 PC, do the following:
+
+**Step 1:** Enable Developer mode
+
+>- Open Settings.
+- Click on Update & security.
+- Click on For Developers.
+- Under "Use developer features", select the Developer mode option to setup the environment to install Bash.
+- On the message box, click Yes to turn on developer mode.
+
+After the necessary components install, you'll need to restart your computer.
+
+**Step 2:** Add the Linux (beta) subsystem
+
+>- Open Control Panel.
+- Click on Programs.
+- Click on Turn Windows features on or off.
+- Check the Windows Subsystem for Linux (beta) option.
+  Click OK.
+
+**Step 3:** Prepare Linux (beta) for use
+
+>- Open Start, do a search for bash.exe, and press Enter.
+- On the command prompt, type y and press Enter to download and install Bash from the Windows Store.
+- Then you'll need to create a default UNIX user account. This account doesn't have to be the same as your Windows account.
+
+At this point, Windows 10 has a fully functional Linux subsystem installed on it. It has access to the Windows filesystem and you can follow the [Ubuntu 16](u16) installation guide to setup cvedia-cli.
+
+This summary of the installation of the Windows 10 bash subsystem was derived from its full version on [windowscentral.com](http://www.windowscentral.com/how-install-bash-shell-command-line-windows-10).
+
+<a name=docker></a>
+# Installation for docker #
+
+For a dockerized installation you can use the provided [Dockerfile](https://github.com/Cvedia/cvedia-cli/tree/master/docker) and its separate usage guide. 
 
 
 This concludes the installation procedure. If all the above went well, you can use ```cvedia``` from the command line to interface to Cvedia.
