@@ -1,6 +1,6 @@
 # Cvedia CLI
 
-After setting up your project on https://cvedia.com/ you have the ability to Export your training set. The export provides you with a command line argument that can be used to run this tool. The CLI takes care of downloading and storing all the content you have predefined in your project.
+After setting up your project on [CVEDIA](https://cvedia.com/) you have the ability to Export your training set. The export provides you with a command line argument that can be used to run this tool. The CLI takes care of downloading and storing all the content you have predefined in your project.
 
 Various storage engines are supported for writing your training set to disk. The list below will be expanded once more engines are made available:
 
@@ -16,11 +16,40 @@ Various storage engines are supported for writing your training set to disk. The
 
 The TFRecords engine also serves as an example on how to write your own custom Python output engine. 
 
+----
+
 Following you can find installation procedures for:
+- [Docker](#docker)
 - [Ubuntu 16.04 Xenial](#u16)
 - [Ubuntu 14.04 Trusty](#u14)
 - [Windows 10](#w10)
-- [Docker](#docker)
+
+<a name=docker></a>
+# Installation for docker (Recommended) #
+
+The easiest way to get cvedia-cli working is thuru [docker](https://www.docker.com/community-edition), you don't need to worry about compiling and installing packages.
+
+### One line install:
+
+```bash
+docker build https://raw.githubusercontent.com/Cvedia/cvedia-cli/master/docker/cvedia-cli/Dockerfile -t cvedia-cli
+```
+
+Basic usage:
+
+```bash
+docker run --rm --net=host --volume /data:/data cvedia-cli  -j <jobID> -b <batch size> -o <output format>
+```
+
+Example:
+```bash
+docker run --rm --net=host --volume /data:/data cvedia-cli  -j CVT2CUg5M7RwcOXsz8UcQZipQbMPMQDz -b 500 -o CSV
+```
+
+For more information on the dockerized installation you can use the provided [Dockerfile](https://github.com/Cvedia/cvedia-cli/tree/master/docker) and its separate usage guide. 
+
+
+This concludes the installation procedure. If all the above went well, you can use ```cvedia``` from the command line to interface to Cvedia.
 
 <a name=u16></a>
 # Installation for Ubuntu 16.04
@@ -28,7 +57,16 @@ Following you can find installation procedures for:
 ## Prerequisites ##
 The following installation guide is created and tested for a fresh Ubuntu 16.04 installation.
 
-This is the installation procedure for Ubuntu 16.04:
+## Install thuru bash script ##
+
+```bash
+mkdir -p /usr/src/cvedia && cd /usr/src/cvedia
+git clone https://github.com/Cvedia/cvedia-cli
+cd /usr/src/cvedia/cvedia-cli/scripts
+./install_ubuntu_16.sh
+```
+
+## Install step by step ##
 
 **Step 1:** Prepare the system
 ```bash
@@ -94,7 +132,16 @@ The following installation guide is created and tested for a fresh Ubuntu 14.04 
 - Install specific version of tensorflow 
 - Minor patch in cvedia-cli source to    compile with python 3.4
 
-This is the installation procedure for Ubuntu 14.04:
+## Install thuru bash script ##
+
+```bash
+mkdir -p /usr/src/cvedia && cd /usr/src/cvedia
+git clone https://github.com/Cvedia/cvedia-cli
+cd /usr/src/cvedia/cvedia-cli/scripts
+./install_ubuntu_14.sh
+```
+
+## Install step by step ##
 
 **Step 1:** Prepare the system
 ```bash
@@ -189,10 +236,6 @@ At this point, Windows 10 has a fully functional Linux subsystem installed on it
 
 This summary of the installation of the Windows 10 bash subsystem was derived from its full version on [windowscentral.com](http://www.windowscentral.com/how-install-bash-shell-command-line-windows-10).
 
-<a name=docker></a>
-# Installation for docker #
+# Limitations #
 
-For a dockerized installation you can use the provided [Dockerfile](https://github.com/Cvedia/cvedia-cli/tree/master/docker) and its separate usage guide. 
-
-
-This concludes the installation procedure. If all the above went well, you can use ```cvedia``` from the command line to interface to Cvedia.
+- We currently do not support 32-bit systems, support for this will be added in the future.

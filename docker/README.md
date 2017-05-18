@@ -1,8 +1,13 @@
+# Requirements:
+
+- [Docker](https://www.docker.com/community-edition)
+- Around 1.5G disk space
+
 # Installation:
 
 To create a Docker container based on the latest cvedia-cli source run the command:
 ```bash
-docker build -t cvedia-cli ./
+docker build -t cvedia-cli docker/cvedia-cli/
 ```
 
 # Usage:
