@@ -29,9 +29,11 @@ if [[ $REPLY =~ [Yy]$ ]]; then
 	fi
 fi
 
+echo
 echo "Installing cvedia-cli..."
 
 cd /usr/src/cvedia/cvedia-cli
+make clean
 ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
   autoheader && \
   aclocal && \
@@ -41,4 +43,4 @@ ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
   make -j4 && \
   make install
 
-echo "Completed, use 'cvedia-cli -h' to see all options"
+echo "Completed, use 'cvedia -h' to see all options"

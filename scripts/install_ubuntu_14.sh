@@ -32,6 +32,7 @@ if [[ $REPLY =~ [Yy]$ ]]; then
 	pip3 install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 fi
 
+echo
 echo "Installing cvedia-cli..."
 
 apt-get -y install software-properties-common python-software-properties
@@ -41,6 +42,7 @@ update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 1 --slave /usr/bin
 
 cd /usr/src/cvedia/cvedia-cli
 sed -i s/python3.5m-config/python3.4m-config/g configure.ac
+make clean
 ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
 	autoheader && \
 	aclocal && \
@@ -50,4 +52,4 @@ ACLOCAL_PATH="/usr/src/cvedia/cvedia-cli" autoreconf -if && \
 	make -j4 && \
 	make install
 
-echo "Completed, use 'cvedia-cli -h' to see all options"
+echo "Completed, use 'cvedia -h' to see all options"
