@@ -28,6 +28,7 @@ cd /usr/src/cvedia/luarocks/luarocks-2.4.2
 
 read -p "Install tensorflow? [Y/N] " -n 1 -r
 if [[ $REPLY =~ [Yy]$ ]]; then
+	echo
 	pip3 install https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.7.1-cp34-none-linux_x86_64.whl
 fi
 

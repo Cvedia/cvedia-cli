@@ -21,8 +21,10 @@ if [[ $REPLY =~ [Yy]$ ]]; then
 	echo
 	read -p "CPU or GPU version? [C/G/Skip] " -n 1 -r
 	if [[ $REPLY =~ [C]$ ]]; then
+		echo
 		pip3 install tensorflow
 	elif [[ $REPLY =~ [G]$ ]]; then
+		echo
 		pip3 install tensorflow-gpu
 	fi
 fi
