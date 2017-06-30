@@ -2,6 +2,7 @@
 #define _CURLREADER_HPP
 
 #define MAX_RETRIES 3
+#define CLI_HEADER "User-Agent: cvedia-cli/1.0"
 
 #include <mutex>
 #include <thread>

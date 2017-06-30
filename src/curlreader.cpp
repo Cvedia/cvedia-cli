@@ -57,7 +57,7 @@ ReadRequest* CurlReader::RequestUrl(string url) {
 	req->url = url;
 
 	struct curl_slist *list = NULL;
-  	list = curl_slist_append(list, "From: cvedia-cli");
+	list = curl_slist_append(list, CLI_HEADER);
 
 
 	// Setup curl object
